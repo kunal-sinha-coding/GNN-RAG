@@ -52,8 +52,8 @@ def load_gnn_rag(g_data_file, g_data_file2=None):
             line = json.loads(line)
             lineg = json.loads(lineg)
 
-            data_file_d[line["question"]] = line
-            data_file_gnn[line["question"]] = lineg
+            data_file_d[line["id"]] = line
+            data_file_gnn[line["id"]] = lineg
         print("ok1")
     if g_data_file2 is not None:
         data_file = os.path.dirname(g_data_file2) + "/test.json"
@@ -62,7 +62,7 @@ def load_gnn_rag(g_data_file, g_data_file2=None):
                 line = json.loads(line)
                 lineg = json.loads(lineg)
                 
-                cand1 = data_file_gnn[line["question"]]["cand"]
+                cand1 = data_file_gnn[line["id"]]["cand"]
                 cand2 =  lineg["cand"]
 
                 for c2 in cand2: #c[0] entity c[1] score
@@ -75,8 +75,8 @@ def load_gnn_rag(g_data_file, g_data_file2=None):
                     if not found:
                         cand1.append(c2)
                 cand1 = sorted(cand1, key=lambda x: x[1], reverse=True)
-                data_file_gnn[line["question"]]["cand"] = cand1
-            data_file_gnn[line["question"]].update({"cand2": lineg["cand"]})
+                data_file_gnn[line["id"]]["cand"] = cand1
+            data_file_gnn[line["id"]].update({"cand2": lineg["cand"]})
             print("ok2")
 
     return data_file_gnn
@@ -94,7 +94,7 @@ def get_output_file(path, force=False):
                     results = json.loads(line)
                 except:
                     raise ValueError("Error in line: ", line)
-                processed_results.append(results["question"])
+                processed_results.append(results["id"])
         fout = open(path, "a")
         return fout, processed_results
 
@@ -102,7 +102,7 @@ def get_output_file(path, force=False):
 def merge_rule_result(qa_dataset, rule_dataset, n_proc=1, filter_empty=False):
     question_to_rule = dict()
     for data in rule_dataset:
-        qid = data["question"]
+        qid = data["id"]
         predicted_paths = data["prediction"]
         ground_paths = data["ground_paths"]
         question_to_rule[qid] = {
@@ -111,7 +111,7 @@ def merge_rule_result(qa_dataset, rule_dataset, n_proc=1, filter_empty=False):
         }
 
     def find_rule(sample):
-        qid = sample["question"]
+        qid = sample["id"]
         sample["predicted_paths"] = []
         sample["ground_paths"] = []
         sample["predicted_paths"] = question_to_rule[qid]["predicted_paths"]
@@ -132,9 +132,9 @@ def prediction(data, processed_list, input_builder, model, encrypt=False, data_f
     entities = data['q_entity']
     
     data["cand"] = None
-    id = data["question"]
+    id = data["id"]
     if data_file_gnn is not None:
-        lineg = data_file_gnn[data["question"]]
+        lineg = data_file_gnn[data["id"]]
         cand = lineg['cand'] 
         predictiong = []
         for c in cand:
