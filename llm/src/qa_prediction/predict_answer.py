@@ -16,6 +16,8 @@ from functools import partial
 
 import json
 
+#CACHE_DIR = "/nlp/scr/ksinha2/cache_dir"
+
 with open('entities_names.json') as f:
     entities_names = json.load(f)
 names_entities = {v: k for k, v in entities_names.items()}
@@ -49,7 +51,7 @@ def load_gnn_rag(g_data_file, g_data_file2=None):
         for line, lineg in (zip(f_in, fg)):
             line = json.loads(line)
             lineg = json.loads(lineg)
-            
+
             data_file_d[line["id"]] = line
             data_file_gnn[line["id"]] = lineg
         print("ok1")
@@ -132,7 +134,6 @@ def prediction(data, processed_list, input_builder, model, encrypt=False, data_f
     data["cand"] = None
     id = data["id"]
     if data_file_gnn is not None:
-        
         lineg = data_file_gnn[data["id"]]
         cand = lineg['cand'] 
         predictiong = []

@@ -17,15 +17,20 @@ class Llama(BaseLanguageModel):
         self.maximun_token = 4096 - 100
         
     def load_model(self, **kwargs):
-        model = LlamaTokenizer.from_pretrained(**kwargs, use_fast=False, token="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")
+        model = LlamaTokenizer.from_pretrained(
+            **kwargs, use_fast=False, 
+            token="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",
+        )
         return model
     
     def tokenize(self, text):
         return len(self.tokenizer.tokenize(text))
     
     def prepare_for_inference(self, **model_kwargs):
-        self.tokenizer = AutoTokenizer.from_pretrained(self.args.model_path,  
-        use_fast=False, token="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")
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            self.args.model_path,  use_fast=False, 
+            token="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",
+        )
         #model_kwargs.update({'use_auth_token': True})
         print("model: ", self.args.model_path)
         self.generator = pipeline("text-generation", token="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", model=self.args.model_path, tokenizer=self.tokenizer, device_map="auto", model_kwargs=model_kwargs, torch_dtype=self.DTYPE.get(self.args.dtype, None))

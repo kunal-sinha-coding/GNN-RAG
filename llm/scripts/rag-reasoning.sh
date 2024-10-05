@@ -13,14 +13,14 @@ for DATA_NAME in $DATASET_LIST; do
         RULE_PATH_G2=None #results/gnn/${DATA_NAME}/rearev-lmsr/test.info
 
         # no rog
-        python src/qa_prediction/predict_answer.py \
+        python3 src/qa_prediction/predict_answer.py \
             --model_name ${MODEL_NAME} \
             -d ${DATA_NAME} \
             --prompt_path ${PROMPT_PATH} \
             --rule_path ${RULE_PATH} \
             --rule_path_g1 ${RULE_PATH_G1} \
             --rule_path_g2 ${RULE_PATH_G2} \
-            --model_path rmanluo/RoG \
+            --model_path distilbert/distilgpt2 \
             --predict_path results/KGQA-GNN-RAG/rearev-sbert
     done
 done
