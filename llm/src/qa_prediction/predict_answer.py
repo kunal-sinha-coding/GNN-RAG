@@ -49,8 +49,10 @@ def load_gnn_rag(g_data_file, g_data_file2=None, dataset_ids=[]):
     data_file = os.path.dirname(g_data_file) + "/test.json"
     with open(data_file) as f_in, open(g_data_file) as fg:
         for i, (line, lineg) in enumerate(zip(f_in, fg)):
+            if i >= len(dataset_ids):
+                continue
             line = json.loads(line)
-            if "id" not in line:
+            if "id" not in line and dataset_ids:
                 line["id"] = dataset_ids[i]
             lineg = json.loads(lineg)
 
@@ -61,8 +63,10 @@ def load_gnn_rag(g_data_file, g_data_file2=None, dataset_ids=[]):
         data_file = os.path.dirname(g_data_file2) + "/test.json"
         with open(data_file) as f_in, open(g_data_file2) as fg:
             for i, (line, lineg) in enumerate(zip(f_in, fg)):
+                if i >= len(dataset_ids):
+                    continue
                 line = json.loads(line)
-                if "id" not in line:
+                if "id" not in line and dataset_ids:
                     line["id"] = dataset_ids[i]
                 lineg = json.loads(lineg)
                 
@@ -194,9 +198,9 @@ def main(args, LLM):
     data_file_gnn = None
     if os.path.exists(args.rule_path_g1):
         if not os.path.exists(args.rule_path_g2):
-            data_file_gnn = load_gnn_rag(args.rule_path_g1, dataset_ids)
+            data_file_gnn = load_gnn_rag(args.rule_path_g1, dataset_ids=dataset_ids)
         else: 
-            data_file_gnn = load_gnn_rag(args.rule_path_g1, args.rule_path_g2, dataset_ids)
+            data_file_gnn = load_gnn_rag(args.rule_path_g1, args.rule_path_g2, dataset_ids=dataset_ids)
 
 
 
