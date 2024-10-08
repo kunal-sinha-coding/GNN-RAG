@@ -9,12 +9,13 @@ class Llama(BaseLanguageModel):
     def add_args(parser):
         parser.add_argument('--model_path', type=str, help="HUGGING FACE MODEL or model path", default='meta-llama/Llama-2-7b-chat-hf')
         parser.add_argument('--max_new_tokens', type=int, help="max length", default=512)
+        parser.add_argument('--maximun_token', type=int, help="max length of prompt", default=412)
         parser.add_argument('--dtype', choices=['fp32', 'fp16', 'bf16'], default='fp16')
 
 
     def __init__(self, args):
         self.args = args
-        self.maximun_token = 4096 - 100
+        self.maximun_token = args.maximun_token
         
     def load_model(self, **kwargs):
         model = LlamaTokenizer.from_pretrained(
@@ -37,5 +38,8 @@ class Llama(BaseLanguageModel):
 
     @torch.inference_mode()
     def generate_sentence(self, llm_input):
-        outputs = self.generator(llm_input, return_full_text=False, max_new_tokens=self.args.max_new_tokens)
+        outputs = self.generator(
+            llm_input, return_full_text=False, 
+            max_new_tokens=self.args.max_new_tokens
+        )
         return outputs[0]['generated_text'] # type: ignore

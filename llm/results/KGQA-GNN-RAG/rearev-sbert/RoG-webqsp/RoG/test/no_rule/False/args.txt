@@ -21,5 +21,6 @@
   "encrypt": false,
   "model_path": "distilbert/distilgpt2",
   "max_new_tokens": 512,
+  "maximun_token": 412,
   "dtype": "fp16"
 }

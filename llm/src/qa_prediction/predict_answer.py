@@ -42,18 +42,14 @@ def match(s1: str, s2: str) -> bool:
     return s2 in s1
 
 
-def load_gnn_rag(g_data_file, g_data_file2=None, dataset_ids=[]):
+def load_gnn_rag(g_data_file, g_data_file2=None):
     data_file_d = {}
     data_file_gnn = {}
 
     data_file = os.path.dirname(g_data_file) + "/test.json"
     with open(data_file) as f_in, open(g_data_file) as fg:
-        for i, (line, lineg) in enumerate(zip(f_in, fg)):
-            if i >= len(dataset_ids):
-                continue
+        for line, lineg in zip(f_in, fg):
             line = json.loads(line)
-            if "id" not in line and dataset_ids:
-                line["id"] = dataset_ids[i]
             lineg = json.loads(lineg)
 
             data_file_d[line["id"]] = line
@@ -62,12 +58,8 @@ def load_gnn_rag(g_data_file, g_data_file2=None, dataset_ids=[]):
     if g_data_file2 is not None:
         data_file = os.path.dirname(g_data_file2) + "/test.json"
         with open(data_file) as f_in, open(g_data_file2) as fg:
-            for i, (line, lineg) in enumerate(zip(f_in, fg)):
-                if i >= len(dataset_ids):
-                    continue
+            for line, lineg in zip(f_in, fg):
                 line = json.loads(line)
-                if "id" not in line and dataset_ids:
-                    line["id"] = dataset_ids[i]
                 lineg = json.loads(lineg)
                 
                 cand1 = data_file_gnn[line["id"]]["cand"]
@@ -165,9 +157,11 @@ def prediction(data, processed_list, input_builder, model, encrypt=False, data_f
             "ground_truth": answer,
             "input": question,
         }
-    
     input = input_builder.process_input(data)
-    prediction = model.generate_sentence(input).strip()
+    try:
+        prediction = model.generate_sentence(input).strip()
+    except:
+        import pdb; pdb.set_trace()
     if prediction is None:
         return None
     result = {
@@ -185,7 +179,6 @@ def main(args, LLM):
     rule_postfix = "no_rule"
     # Load dataset
     dataset = load_dataset(input_file, split=args.split)
-    dataset_ids = [data["id"] for data in dataset]
     if args.add_rule:
         rule_postfix = args.rule_path.replace("/", "_").replace(".", "_")
         rule_dataset = utils.load_jsonl(args.rule_path)
@@ -198,9 +191,9 @@ def main(args, LLM):
     data_file_gnn = None
     if os.path.exists(args.rule_path_g1):
         if not os.path.exists(args.rule_path_g2):
-            data_file_gnn = load_gnn_rag(args.rule_path_g1, dataset_ids=dataset_ids)
+            data_file_gnn = load_gnn_rag(args.rule_path_g1)
         else: 
-            data_file_gnn = load_gnn_rag(args.rule_path_g1, args.rule_path_g2, dataset_ids=dataset_ids)
+            data_file_gnn = load_gnn_rag(args.rule_path_g1, args.rule_path_g2)
 
 
 
