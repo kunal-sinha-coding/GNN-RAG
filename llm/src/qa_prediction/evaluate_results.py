@@ -96,6 +96,7 @@ def eval_result(predict_file, encrypt=False, cal_f1=True, topk = -1):
             id = data['id']
             prediction = data['prediction'].strip()
             answer = data['ground_truth']
+            import pdb; pdb.set_trace()
             if cal_f1:
                 if not isinstance(prediction, list):
                     prediction = prediction.split("\n")

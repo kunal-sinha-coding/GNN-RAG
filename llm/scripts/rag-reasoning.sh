@@ -20,7 +20,7 @@ for DATA_NAME in $DATASET_LIST; do
             --rule_path ${RULE_PATH} \
             --rule_path_g1 ${RULE_PATH_G1} \
             --rule_path_g2 ${RULE_PATH_G2} \
-            --model_path distilbert/distilgpt2 \
+            --model_path rmanluo/RoG \
             --predict_path results/KGQA-GNN-RAG/rearev-sbert
     done
 done

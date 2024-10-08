@@ -19,8 +19,8 @@
   "filter_empty": false,
   "debug": false,
   "encrypt": false,
-  "model_path": "distilbert/distilgpt2",
+  "model_path": "rmanluo/RoG",
   "max_new_tokens": 512,
-  "maximun_token": 412,
+  "maximun_token": 3996,
   "dtype": "fp16"
 }
