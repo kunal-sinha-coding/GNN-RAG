@@ -16,8 +16,6 @@ from functools import partial
 
 import json
 
-#CACHE_DIR = "/nlp/scr/ksinha2/cache_dir"
-
 with open('entities_names.json') as f:
     entities_names = json.load(f)
 names_entities = {v: k for k, v in entities_names.items()}
@@ -127,6 +125,7 @@ def merge_rule_result(qa_dataset, rule_dataset, n_proc=1, filter_empty=False):
 
 
 def prediction(data, processed_list, input_builder, model, encrypt=False, data_file_gnn=None):
+    processed_list = [] # TEMPORARILY ADDED - you need to more formally clean up processed list cache
     question = data["question"]
     answer = data["answer"]
     entities = data['q_entity']
@@ -157,11 +156,9 @@ def prediction(data, processed_list, input_builder, model, encrypt=False, data_f
             "ground_truth": answer,
             "input": question,
         }
+    
     input = input_builder.process_input(data)
-    try:
-        prediction = model.generate_sentence(input).strip()
-    except:
-        import pdb; pdb.set_trace()
+    prediction = model.generate_sentence(input).strip()
     if prediction is None:
         return None
     result = {
