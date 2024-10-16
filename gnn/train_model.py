@@ -3,6 +3,7 @@ from utils import create_logger
 import time
 import numpy as np
 import os, math
+import wandb
 
 import torch
 from torch.optim.lr_scheduler import ExponentialLR
@@ -24,6 +25,7 @@ from evaluate import Evaluator
 class Trainer_KBQA(object):
     def __init__(self, args, model_name, logger=None):
         #print('Trainer here')
+        wandb.init(project="gnn-rag")
         self.args = args
         self.logger = logger
         self.best_dev_performance = 0.0
@@ -62,7 +64,6 @@ class Trainer_KBQA(object):
         if args['relation_word_emb']:
             #self.model.use_rel_texts(self.rel_texts, self.rel_texts_inv)
             self.model.encode_rel_texts(self.rel_texts, self.rel_texts_inv)
-
 
         self.model.to(self.device)
         self.evaluator = Evaluator(args=args, model=self.model, entity2id=self.entity2id,
@@ -133,11 +134,17 @@ class Trainer_KBQA(object):
             if self.decay_rate > 0:
                 self.scheduler.step()
             
+            wandb.log({"Train loss": loss.item()})
+            wandb.log({"Train h1": np.mean(h1_list_all)})
+            wandb.log({"Train f1": np.mean(f1_list_all)})
             self.logger.info("Epoch: {}, loss : {:.4f}, time: {}".format(epoch + 1, loss, time.time() - st))
             self.logger.info("Training h1 : {:.4f}, f1 : {:.4f}".format(np.mean(h1_list_all), np.mean(f1_list_all)))
             
             if (epoch + 1) % eval_every == 0:
                 eval_f1, eval_h1, eval_em = self.evaluate(self.valid_data, self.test_batch_size)
+                wandb.log({"Val f1": eval_f1})
+                wandb.log({"Val h1": eval_h1})
+                wandb.log({"Val em": eval_em})
                 self.logger.info("EVAL F1: {:.4f}, H1: {:.4f}, EM {:.4f}".format(eval_f1, eval_h1, eval_em))
                 # eval_f1, eval_h1 = self.evaluate(self.test_data, self.test_batch_size)
                 # self.logger.info("TEST F1: {:.4f}, H1: {:.4f}".format(eval_f1, eval_h1))
@@ -156,6 +163,9 @@ class Trainer_KBQA(object):
                         do_test = True
 
                 eval_f1, eval_h1, eval_em = self.evaluate(self.test_data, self.test_batch_size)
+                wandb.log({"Test f1": eval_f1})
+                wandb.log({"Test h1": eval_h1})
+                wandb.log({"Test em": eval_em})
                 self.logger.info("TEST F1: {:.4f}, H1: {:.4f}, EM {:.4f}".format(eval_f1, eval_h1, eval_em))
                 # if do_test:
                 #     eval_f1, eval_h1 = self.evaluate(self.test_data, self.test_batch_size)

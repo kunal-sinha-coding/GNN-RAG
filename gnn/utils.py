@@ -1,5 +1,6 @@
 import logging
 import os
+import wandb
 
 
 def create_logger(args):

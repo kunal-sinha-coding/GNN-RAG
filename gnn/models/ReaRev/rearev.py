@@ -26,7 +26,6 @@ class ReaRev(BaseModel):
         #self.share_module_def()
         self.norm_rel = args['norm_rel']
         self.layers(args)
-        
 
         self.loss_type =  args['loss_type']
         self.num_iter = args['num_iter']
