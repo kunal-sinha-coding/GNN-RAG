@@ -79,8 +79,7 @@ class PromptBuilder(object):
                     prediction.append(p[-1][-1])
         return prediction
     
-    
-    def process_input(self, question_dict):
+    def process_input(self, question_dict, return_list=True):
         '''
         Take question as input and return the input with prompt
         '''
@@ -151,15 +150,22 @@ class PromptBuilder(object):
         if self.each_line:
             instruction += self.EACH_LINE
         
+        input_list = []
+
         if self.add_rule or question_dict['cand'] is not None:
             other_prompt = self.prompt_template.format(instruction = instruction, input = self.GRAPH_CONTEXT.format(context = "") + input)
             context = self.check_prompt_length(other_prompt, lists_of_paths, self.maximun_token)
             
             input = self.GRAPH_CONTEXT.format(context = context) + input
+            if return_list:
+                input_list = [
+                    self.GRAPH_CONTEXT.format(context=path) + input
+                    for path in lists_of_paths
+                ]
         
         input = self.prompt_template.format(instruction = instruction, input = input)
             
-        return input
+        return input, input_list
     
     def check_prompt_length(self, prompt, list_of_paths, maximun_token):
         '''Check whether the input prompt is too long. If it is too long, remove the first path and check again.'''
