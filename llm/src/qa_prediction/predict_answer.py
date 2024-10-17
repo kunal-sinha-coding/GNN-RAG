@@ -158,35 +158,7 @@ def prediction(data, processed_list, input_builder, model, encrypt=False, data_f
         }
     
     input, input_list = input_builder.process_input(data)
-
-    def calculate_perplexity():
-        tokenizer.padding_side = "left"
-        prompt_tokens = tokenizer(input_list, return_tensors="pt", add_special_tokens=True, padding=True).to(device)
-        reader_tok, reader_mask = prompt_tokens.input_ids[:, :-1], prompt_tokens.attention_mask[:, :-1] 
-        answer_tok, answer_mask = tokenizer(answer, return_tensors="pt", add_special_tokens=True).to(device)
-        repeat_answer_tok, repeat_answer_mask = answer_tok.repeat(reader_tok.shape), answer_mask.repeat(reader_mask.shape)
-        lsr_logits = llm_model(
-            input_ids=reader_tok,
-            attention_mask=reader_mask,
-            decoder_input_ids=repeat_answer_tok,
-            decoder_attention_mask=repeat_answer_mask,
-            use_cache=False,
-        ).logits
-
-        lsr_labels = repeat_answer_tok.masked_fill(repeat_answer_mask == 0, IGNORE_INDEX).to(device)
-        token_loss = F.cross_entropy(
-            lsr_logits.reshape(-1, lsr_logits.shape[-1]),
-            lsr_labels.view(-1),
-            ignore_index=IGNORE_INDEX,
-            reduction='none',
-        ).reshape((bsz, k, -1))
-        z = (lsr_labels.reshape((bsz, k, -1)) > -1).sum(dim=-1)
-        llm_perplexity = -token_loss.sum(dim=-1) / z
-        llm_likelihood = torch.softmax(llm_perplexity / gamma, dim=-1)
-        return llm_likelihood, llm_perplexity
-
-    llm_likliehood, llm_perplexity = compute_perplexity()
-    import pdb; pdb.set_trace()
+    llm_likelihood, llm_perplexity = model.calculate_perplexity()
     prediction = model.generate_sentence(input).strip()
     if prediction is None:
         return None
