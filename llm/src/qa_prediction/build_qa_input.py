@@ -158,9 +158,16 @@ class PromptBuilder(object):
             
             input = self.GRAPH_CONTEXT.format(context = context) + input
             if return_list:
-                input_list = [
-                    self.GRAPH_CONTEXT.format(context=path) + input
+                path_contexts = [
+                    self.GRAPH_CONTEXT.format(context=path)
                     for path in lists_of_paths
+                ]
+                input_list = [
+                    (
+                        self.prompt_template.format(instruction=instruction, input=p_context)
+                        + self.QUESTION.format(question=question)
+                    )
+                    for p_context in path_contexts
                 ]
         
         input = self.prompt_template.format(instruction = instruction, input = input)

@@ -13,6 +13,7 @@ import json
 from multiprocessing import Pool
 from qa_prediction.build_qa_input import PromptBuilder
 from functools import partial
+import wandb
 
 import json
 
@@ -124,7 +125,7 @@ def merge_rule_result(qa_dataset, rule_dataset, n_proc=1, filter_empty=False):
     return qa_dataset
 
 
-def prediction(data, processed_list, input_builder, model, encrypt=False, data_file_gnn=None):
+def prediction(data, processed_list, input_builder, model, encrypt=False, data_file_gnn=None, table=None):
     processed_list = [] # TEMPORARILY ADDED - you need to more formally clean up processed list cache
     question = data["question"]
     answer = data["answer"]
@@ -158,7 +159,7 @@ def prediction(data, processed_list, input_builder, model, encrypt=False, data_f
         }
     
     input, input_list = input_builder.process_input(data)
-    llm_likelihood, llm_perplexity = model.calculate_perplexity()
+    llm_likelihood, llm_perplexity = model.calculate_perplexity(input_list, answer)
     prediction = model.generate_sentence(input).strip()
     if prediction is None:
         return None
@@ -169,11 +170,21 @@ def prediction(data, processed_list, input_builder, model, encrypt=False, data_f
         "ground_truth": answer,
         "input": input,
     }
-
+    if table:
+        table.add_data(
+            id, question, prediction, answer, input,
+            input_list, llm_perplexity
+        )
+        wandb.log({"LLM outputs": table})
     return result
 
 
 def main(args, LLM):
+    wandb.init(project="gnn-rag")
+    table = wandb.Table(columns=[
+        "id", "question", "prediction", "ground_truth", 
+        "input", "input_list", "perplexity"
+    ])
     input_file = os.path.join(args.data_path, args.d)
     rule_postfix = "no_rule"
     # Load dataset
@@ -227,8 +238,8 @@ def main(args, LLM):
             maximun_token=model.maximun_token,
             tokenize=model.tokenize,
         )
-        print("Prepare pipline for inference...")
-        model.prepare_for_inference()
+        #print("Prepare pipline for inference...")
+        #model.prepare_for_inference()
     else:
         model = None
         # Directly return last entity as answer
@@ -267,7 +278,7 @@ def main(args, LLM):
                     fout.flush()
     else:
         for data in tqdm(dataset):
-            res = prediction(data, processed_list, input_builder, model, encrypt=args.encrypt, data_file_gnn=data_file_gnn)
+            res = prediction(data, processed_list, input_builder, model, encrypt=args.encrypt, data_file_gnn=data_file_gnn, table=table)
             if res is not None:
                 if args.debug:
                     print(json.dumps(res))
