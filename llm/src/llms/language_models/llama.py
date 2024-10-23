@@ -39,7 +39,7 @@ class Llama(BaseLanguageModel):
 
     def calculate_perplexity(self, inputs, answer, gamma=1.0):
         k = len(inputs)
-        #self.tokenizer.padding_side = "left" #Pad prompt on the left side
+        self.tokenizer.padding_side = "left" #Pad prompt on the left side
         prompt_encoding = self.tokenizer.batch_encode_plus(
             inputs, return_tensors="pt", add_special_tokens=True, padding=True
         )
