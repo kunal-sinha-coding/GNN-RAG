@@ -125,7 +125,8 @@ def merge_rule_result(qa_dataset, rule_dataset, n_proc=1, filter_empty=False):
     return qa_dataset
 
 
-def prediction(data, processed_list, input_builder, model, encrypt=False, data_file_gnn=None, table=None):
+def prediction(data, processed_list, input_builder, model, 
+                encrypt=False, data_file_gnn=None, table=None):
     processed_list = [] # TEMPORARILY ADDED - you need to more formally clean up processed list cache
     question = data["question"]
     answer = data["answer"]
@@ -159,7 +160,9 @@ def prediction(data, processed_list, input_builder, model, encrypt=False, data_f
         }
     
     input, input_list = input_builder.process_input(data)
-    llm_likelihood, llm_perplexity = model.calculate_perplexity(input_list, answer)
+    llm_likelihood, llm_perplexity = None, None
+    if input_list:
+        llm_likelihood, llm_perplexity = model.calculate_perplexity(input_list, answer)
     prediction = model.generate_sentence(input).strip()
     if prediction is None:
         return None
@@ -173,7 +176,7 @@ def prediction(data, processed_list, input_builder, model, encrypt=False, data_f
     if table:
         table.add_data(
             id, question, prediction, answer, input,
-            input_list, llm_perplexity
+            input_list, []#llm_perplexity
         )
         wandb.log({"LLM outputs": table})
     return result

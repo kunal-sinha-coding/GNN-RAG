@@ -125,6 +125,8 @@ class PromptBuilder(object):
                 if utils.path_to_string(p) not in lists_of_paths2:
                     lists_of_paths2.append(utils.path_to_string(p))
            
+        max_paths = 5 #ToDo: pass this in as an argument
+        lists_of_paths = lists_of_paths[:max_paths]
         input = self.QUESTION.format(question = question)
         # MCQ
         if len(question_dict['choices']) > 0:
