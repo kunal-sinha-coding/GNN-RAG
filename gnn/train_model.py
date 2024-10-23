@@ -21,6 +21,7 @@ from models.ReaRev.rearev import ReaRev
 from models.NSM.nsm import NSM
 from models.GraftNet.graftnet import GraftNet
 from evaluate import Evaluator
+from ..llm.src.llms.language_models.llama import Llama
 
 class Trainer_KBQA(object):
     def __init__(self, args, model_name, logger=None):
@@ -40,7 +41,9 @@ class Trainer_KBQA(object):
         self.device = torch.device('cuda' if args['use_cuda'] else 'cpu')
         self.reset_time = 0
         self.load_data(args, args['lm'])
-        
+        print("Memory before LLM model: ", torch.cuda.get_mem_info()[0] / 1e9)
+        self.llm_model = LLama().to(self.device)
+        print("Memory after LLM model: ", torch.cuda.get_mem_info()[0] / 1e9)
 
 
         if 'decay_rate' in args:
@@ -229,7 +232,7 @@ class Trainer_KBQA(object):
             batch = self.train_data.get_batch(iteration, self.args['batch_size'], self.args['fact_drop'])
             
             self.optim_model.zero_grad()
-            loss, _, _, tp_list = self.model(batch, training=True)
+            loss, _, _, tp_list = self.model(batch, training=True, replug=True, llm_model=self.llm_model) #ToDo: do not hardcode
             # if tp_list is not None:
             h1_list, f1_list = tp_list
             h1_list_all.extend(h1_list)
