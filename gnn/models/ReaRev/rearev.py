@@ -159,7 +159,7 @@ class ReaRev(BaseModel):
         return cur_loss
 
     
-    def forward(self, batch, training=False, replug=True, llm_model=None):
+    def forward(self, batch, training=False, perplexity_dist=None):
         """
         Forward function: creates instructions and performs GNN reasoning.
         """
@@ -229,7 +229,7 @@ class ReaRev(BaseModel):
         # filter no answer training case
         # loss = 0
         # for pred_dist in self.dist_history:
-        if replug:
+        if perplexity_dist:
             import pdb; pdb.set_trace()
         loss = self.calc_loss_label(curr_dist=pred_dist, teacher_dist=answer_dist, label_valid=case_valid)
 

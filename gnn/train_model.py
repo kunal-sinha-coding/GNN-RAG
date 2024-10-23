@@ -21,7 +21,7 @@ from models.ReaRev.rearev import ReaRev
 from models.NSM.nsm import NSM
 from models.GraftNet.graftnet import GraftNet
 from evaluate import Evaluator
-from ..llm.src.llms.language_models.llama import Llama
+from llm.src.llms.language_models.llama import Llama
 
 class Trainer_KBQA(object):
     def __init__(self, args, model_name, logger=None):
@@ -42,7 +42,7 @@ class Trainer_KBQA(object):
         self.reset_time = 0
         self.load_data(args, args['lm'])
         print("Memory before LLM model: ", torch.cuda.get_mem_info()[0] / 1e9)
-        self.llm_model = LLama().to(self.device)
+        self.llm_model = Llama().to(self.device)
         print("Memory after LLM model: ", torch.cuda.get_mem_info()[0] / 1e9)
 
 
@@ -89,6 +89,9 @@ class Trainer_KBQA(object):
                     setattr(self, k, None)
                 else:
                     setattr(self, k, args['data_folder'] + v)
+
+    def get_perplexity_dist(batch):
+        import pdb; pdb.set_trace()
 
     def optim_def(self):
         
@@ -232,7 +235,8 @@ class Trainer_KBQA(object):
             batch = self.train_data.get_batch(iteration, self.args['batch_size'], self.args['fact_drop'])
             
             self.optim_model.zero_grad()
-            loss, _, _, tp_list = self.model(batch, training=True, replug=True, llm_model=self.llm_model) #ToDo: do not hardcode
+            perplexity_dist = get_perplexity_dist(batch)
+            loss, _, _, tp_list = self.model(batch, training=True, perplexity_dist=perplexity_dist) #ToDo: do not hardcode
             # if tp_list is not None:
             h1_list, f1_list = tp_list
             h1_list_all.extend(h1_list)
