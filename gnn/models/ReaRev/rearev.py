@@ -11,6 +11,9 @@ from modules.question_encoding.bert_encoder import BERTInstruction
 from modules.layer_init import TypeLayer
 from modules.query_update import AttnEncoder, Fusion, QueryReform
 
+import argparse
+from llm.src.llms.language_models.llama import Llama
+
 VERY_SMALL_NUMBER = 1e-10
 VERY_NEG_NUMBER = -100000000000
 
@@ -46,6 +49,19 @@ class ReaRev(BaseModel):
             self.add_module('reform' + str(i), QueryReform(self.entity_dim))
         # self.reform_rel = QueryReform(self.entity_dim)
         # self.add_module('reform', QueryReform(self.entity_dim))
+
+        print("Memory before LLM model: ", torch.cuda.mem_get_info()[0] / 1e9)
+        self.llm_args = argparse.Namespace( #ToDo: dont hardcode
+            add_rule=False, cot=False, d='RoG-cwq', data_path='rmanluo', debug=False, dtype='fp16', 
+            each_line=False, encrypt=False, explain=False, filter_empty=False, force=False, 
+            max_new_tokens=512, maximun_token=200, model_name='RoG', model_path='TinyLlama/TinyLlama-1.1B-Chat-v0.6', 
+            n=1, predict_path='results/KGQA-GNN-RAG/rearev-sbert', prompt_path='prompts/llama2_predict.txt', 
+            rule_path='results/gen_rule_path/RoG-cwq/RoG/test/predictions_3_False.jsonl', 
+            rule_path_g1='results/gnn/RoG-cwq/rearev-sbert/test.info', 
+            rule_path_g2='None', split='test', use_random=False, use_true=False
+        )
+        self.llm_model = Llama(self.llm_args)
+        print("Memory after LLM model: ", torch.cuda.mem_get_info()[0] / 1e9)
 
     def layers(self, args):
         # initialize entity embedding
@@ -158,8 +174,27 @@ class ReaRev(BaseModel):
         cur_loss = torch.sum(tp_loss) / curr_dist.size(0)
         return cur_loss
 
+    def get_perplexity_dist(text_batch, pred_dist):
+        import pdb; pdb.set_trace()
+        input_builder = PromptBuilder(
+            self.llm_args.prompt_path,
+            self.llm_args.encrypt,
+            self.llm_args.add_rule,
+            use_true=self.llm_args.use_true,
+            cot=self.llm_args.cot,
+            explain=self.llm_args.explain,
+            use_random=self.llm_args.use_random,
+            each_line=self.llm_args.each_line,
+            maximun_token=self.llm_model.maximun_token,
+            tokenize=self.llm_model.tokenize,
+        )
+        input, input_list = input_builder.process_input(text_batch)
+        llm_likelihood, llm_perplexity = None, None
+        if input_list:
+            llm_likelihood, llm_perplexity = model.calculate_perplexity(input_list, answer)
+        print(llm_perplexity)
     
-    def forward(self, batch, training=False, perplexity_dist=None):
+    def forward(self, batch, text_batch, training=False, perplexity_dist=None):
         """
         Forward function: creates instructions and performs GNN reasoning.
         """
@@ -230,7 +265,7 @@ class ReaRev(BaseModel):
         # loss = 0
         # for pred_dist in self.dist_history:
         if perplexity_dist:
-            import pdb; pdb.set_trace()
+            get_perplexity_dist(text_batch, pred_dist)
         loss = self.calc_loss_label(curr_dist=pred_dist, teacher_dist=answer_dist, label_valid=case_valid)
 
         
