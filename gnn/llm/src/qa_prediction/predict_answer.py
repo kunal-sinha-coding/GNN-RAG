@@ -281,6 +281,7 @@ def main(args, LLM):
                     fout.flush()
     else:
         for data in tqdm(dataset):
+            import pdb; pdb.set_trace()
             res = prediction(data, processed_list, input_builder, model, encrypt=args.encrypt, data_file_gnn=data_file_gnn, table=table)
             if res is not None:
                 if args.debug:

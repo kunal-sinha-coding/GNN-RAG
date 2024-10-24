@@ -4,6 +4,7 @@ import time
 import numpy as np
 import os, math
 import wandb
+import argparse
 
 import torch
 from torch.optim.lr_scheduler import ExponentialLR
@@ -22,6 +23,7 @@ from models.NSM.nsm import NSM
 from models.GraftNet.graftnet import GraftNet
 from evaluate import Evaluator
 from llm.src.llms.language_models.llama import Llama
+import datasets
 
 class Trainer_KBQA(object):
     def __init__(self, args, model_name, logger=None):
@@ -42,7 +44,18 @@ class Trainer_KBQA(object):
         self.reset_time = 0
         self.load_data(args, args['lm'])
         print("Memory before LLM model: ", torch.cuda.mem_get_info()[0] / 1e9)
-        self.llm_model = Llama().to(self.device)
+        self.llm_args = argparse.Namespace( #ToDo: dont hardcode
+            add_rule=False, cot=False, d='RoG-cwq', data_path='rmanluo', debug=False, dtype='fp16', 
+            each_line=False, encrypt=False, explain=False, filter_empty=False, force=False, 
+            max_new_tokens=512, maximun_token=200, model_name='RoG', model_path='TinyLlama/TinyLlama-1.1B-Chat-v0.6', 
+            n=1, predict_path='results/KGQA-GNN-RAG/rearev-sbert', prompt_path='prompts/llama2_predict.txt', 
+            rule_path='results/gen_rule_path/RoG-cwq/RoG/test/predictions_3_False.jsonl', 
+            rule_path_g1='results/gnn/RoG-cwq/rearev-sbert/test.info', 
+            rule_path_g2='None', split='test', use_random=False, use_true=False
+        )
+        train_path = os.path.join(self.llm_args.data_path, self.llm_args.d)
+        self.train_text_data = datasets.load_dataset(train_path, split="train")
+        #self.llm_model = Llama(self.llm_args)
         print("Memory after LLM model: ", torch.cuda.mem_get_info()[0] / 1e9)
 
 
@@ -235,7 +248,11 @@ class Trainer_KBQA(object):
             batch = self.train_data.get_batch(iteration, self.args['batch_size'], self.args['fact_drop'])
             
             self.optim_model.zero_grad()
-            perplexity_dist = get_perplexity_dist(batch)
+            import pdb; pdb.set_trace()
+            train_start = iteration * self.args['batch_size'] 
+            train_batch = self.train_text_data[train_start : train_start + self.args['batch_size']]
+            import pdb; pdb.set_trace()
+            perplexity_dist = get_perplexity_dist(train_batch)
             loss, _, _, tp_list = self.model(batch, training=True, perplexity_dist=perplexity_dist) #ToDo: do not hardcode
             # if tp_list is not None:
             h1_list, f1_list = tp_list
