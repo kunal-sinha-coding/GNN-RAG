@@ -41,9 +41,9 @@ class Trainer_KBQA(object):
         self.device = torch.device('cuda' if args['use_cuda'] else 'cpu')
         self.reset_time = 0
         self.load_data(args, args['lm'])
-        print("Memory before LLM model: ", torch.cuda.get_mem_info()[0] / 1e9)
+        print("Memory before LLM model: ", torch.cuda.mem_get_info()[0] / 1e9)
         self.llm_model = Llama().to(self.device)
-        print("Memory after LLM model: ", torch.cuda.get_mem_info()[0] / 1e9)
+        print("Memory after LLM model: ", torch.cuda.mem_get_info()[0] / 1e9)
 
 
         if 'decay_rate' in args:
