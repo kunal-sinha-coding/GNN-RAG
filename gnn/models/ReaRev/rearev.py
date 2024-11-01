@@ -13,6 +13,7 @@ from modules.query_update import AttnEncoder, Fusion, QueryReform
 
 import argparse
 from llm.src.llms.language_models.llama import Llama
+from llm.src.qa_prediction.build_qa_input import PromptBuilder
 
 VERY_SMALL_NUMBER = 1e-10
 VERY_NEG_NUMBER = -100000000000
@@ -55,9 +56,9 @@ class ReaRev(BaseModel):
             add_rule=False, cot=False, d='RoG-cwq', data_path='rmanluo', debug=False, dtype='fp16', 
             each_line=False, encrypt=False, explain=False, filter_empty=False, force=False, 
             max_new_tokens=512, maximun_token=200, model_name='RoG', model_path='TinyLlama/TinyLlama-1.1B-Chat-v0.6', 
-            n=1, predict_path='results/KGQA-GNN-RAG/rearev-sbert', prompt_path='prompts/llama2_predict.txt', 
-            rule_path='results/gen_rule_path/RoG-cwq/RoG/test/predictions_3_False.jsonl', 
-            rule_path_g1='results/gnn/RoG-cwq/rearev-sbert/test.info', 
+            n=1, predict_path='llm/results/KGQA-GNN-RAG/rearev-sbert', prompt_path='llm/prompts/llama2_predict.txt', 
+            rule_path='llm/results/gen_rule_path/RoG-cwq/RoG/test/predictions_3_False.jsonl', 
+            rule_path_g1='llm/results/gnn/RoG-cwq/rearev-sbert/test.info', 
             rule_path_g2='None', split='test', use_random=False, use_true=False
         )
         self.llm_model = Llama(self.llm_args)
@@ -174,8 +175,7 @@ class ReaRev(BaseModel):
         cur_loss = torch.sum(tp_loss) / curr_dist.size(0)
         return cur_loss
 
-    def get_perplexity_dist(text_batch, pred_dist):
-        import pdb; pdb.set_trace()
+    def get_perplexity_dist(self, text_batch, top_indices):
         input_builder = PromptBuilder(
             self.llm_args.prompt_path,
             self.llm_args.encrypt,
@@ -188,13 +188,14 @@ class ReaRev(BaseModel):
             maximun_token=self.llm_model.maximun_token,
             tokenize=self.llm_model.tokenize,
         )
+        text_batch["cand"] = np.take(text_batch["cand"], top_indices, axis=-1)
         input, input_list = input_builder.process_input(text_batch)
-        llm_likelihood, llm_perplexity = None, None
+        llm_likelihood, llm_perplexity = torch.zeros(len(text_batch["cand"])).to(self.device), torch.zeros(len(text_batch["cand"])).to(self.device)
         if input_list:
-            llm_likelihood, llm_perplexity = model.calculate_perplexity(input_list, answer)
-        print(llm_perplexity)
+            llm_likelihood, llm_perplexity = self.llm_model.calculate_perplexity(input_list, text_batch["answer"])
+        return llm_likelihood.unsqueeze(0), llm_perplexity.unsqueeze(0)
     
-    def forward(self, batch, text_batch, training=False, perplexity_dist=None):
+    def forward(self, batch, text_batch=None, training=False, replug=False, top_k=5):
         """
         Forward function: creates instructions and performs GNN reasoning.
         """
@@ -264,11 +265,15 @@ class ReaRev(BaseModel):
         # filter no answer training case
         # loss = 0
         # for pred_dist in self.dist_history:
-        if perplexity_dist:
-            get_perplexity_dist(text_batch, pred_dist)
-        loss = self.calc_loss_label(curr_dist=pred_dist, teacher_dist=answer_dist, label_valid=case_valid)
+        loss = 0.0
+        if replug and text_batch:
+            top_indices = pred_dist.sort(dim=-1).indices[0, -top_k:]
+            with torch.no_grad():
+                llm_likelihood, llm_perplexity = self.get_perplexity_dist(text_batch, top_indices.cpu().numpy())
+            loss = self.calc_loss_label(curr_dist=pred_dist[:, top_indices], teacher_dist=llm_likelihood, label_valid=case_valid)
+        else:
+            loss = self.calc_loss_label(curr_dist=pred_dist, teacher_dist=answer_dist, label_valid=case_valid)
 
-        
         pred_dist = self.dist_history[-1]
         pred = torch.max(pred_dist, dim=1)[1]
         if training:

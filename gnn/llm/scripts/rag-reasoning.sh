@@ -2,26 +2,26 @@
 SPLIT="test"
 DATASET_LIST="RoG-cwq"
 MODEL_NAME=RoG
-PROMPT_PATH=prompts/llama2_predict.txt
+PROMPT_PATH=llm/prompts/llama2_predict.txt
 BEAM_LIST="3" # "1 2 3 4 5"
 
 #GNN-RAG
 for DATA_NAME in $DATASET_LIST; do
     for N_BEAM in $BEAM_LIST; do
-        RULE_PATH=results/gen_rule_path/${DATA_NAME}/${MODEL_NAME}/test/predictions_${N_BEAM}_False.jsonl
-        RULE_PATH_G1=results/gnn/${DATA_NAME}/rearev-sbert/test.info
+        RULE_PATH=llm/results/gen_rule_path/${DATA_NAME}/${MODEL_NAME}/test/predictions_${N_BEAM}_False.jsonl
+        RULE_PATH_G1=llm/results/gnn/${DATA_NAME}/rearev-sbert/test.info
         RULE_PATH_G2=None #results/gnn/${DATA_NAME}/rearev-lmsr/test.info
 
         # no rog
-        python3 src/qa_prediction/predict_answer.py \
+        python3 llm/src/qa_prediction/predict_answer.py \
             --model_name ${MODEL_NAME} \
             -d ${DATA_NAME} \
             --prompt_path ${PROMPT_PATH} \
             --rule_path ${RULE_PATH} \
-	    --model_path rmanluo/RoG \
+	    --model_path TinyLlama/TinyLlama-1.1B-Chat-v0.6 \
             --rule_path_g1 ${RULE_PATH_G1} \
             --rule_path_g2 ${RULE_PATH_G2} \
-            --predict_path results/KGQA-GNN-RAG/rearev-sbert
+            --predict_path llm/results/KGQA-GNN-RAG/rearev-sbert
     done
 done
 

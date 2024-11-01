@@ -9,13 +9,12 @@ from sklearn.metrics import precision_score
 import sys
 sys.path.append(os.path.dirname(os.path.realpath(__file__)) + "/..")
 import utils
+import llm.src.utils.utils as llm_utils
 
 from datasets import load_dataset
 
 import json
-with open('entities_names.json') as f:
-    entities_names = json.load(f)
-names_entities = {v: k for k, v in entities_names.items()}
+entities_names, names_entities = llm_utils.get_entities_names()
 
 
 def normalize(s: str) -> str:

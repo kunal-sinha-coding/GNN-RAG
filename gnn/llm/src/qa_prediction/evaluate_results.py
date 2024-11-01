@@ -6,11 +6,9 @@ import re
 import string
 from sklearn.metrics import precision_score
 
-import json
-with open('entities_names.json') as f:
-    entities_names = json.load(f)
-names_entities = {v: k for k, v in entities_names.items()}
-
+import utils
+import llm.src.utils.utils as llm_utils
+entities_names, names_entities = llm_utils.get_entities_names()
 
 def normalize(s: str) -> str:
     """Lower text and remove punctuation, articles and extra whitespace."""

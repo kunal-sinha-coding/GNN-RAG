@@ -52,12 +52,12 @@ class Llama(BaseLanguageModel):
         answer_mask = answer_encoding.attention_mask.repeat((k, 1))[:, 1:].to(self.device)
         full_tok = torch.cat([reader_tok, answer_tok], dim=-1)
         full_mask = torch.cat([reader_mask, answer_mask], dim=-1)
-        print("Memory before forward pass: ", torch.cuda.mem_get_info()[0] / 1e9)
+        #print("Memory before forward pass: ", torch.cuda.mem_get_info()[0] / 1e9)
         full_logits = self.llm_model(
             input_ids=full_tok[:, :-1], #Dont predict next token logits after last token
             attention_mask=full_mask[:, :-1]
         ).logits
-        print("Memory after forward pass: ", torch.cuda.mem_get_info()[0] / 1e9)
+        #print("Memory after forward pass: ", torch.cuda.mem_get_info()[0] / 1e9)
         full_logits = full_logits[:, -answer_tok.size(1):] #Only look at logits for answer
         full_labels = answer_tok.masked_fill(answer_mask == 0, IGNORE_INDEX)
         token_loss = F.cross_entropy(
@@ -69,7 +69,7 @@ class Llama(BaseLanguageModel):
         z = (full_labels > -1).sum(dim=-1)
         llm_perplexity = -token_loss.sum(dim=-1) / z
         llm_likelihood = torch.softmax(llm_perplexity / gamma, dim=-1)
-        print("Perplexity: ", llm_perplexity)
+        #print("Perplexity: ", llm_perplexity)
         return llm_likelihood, llm_perplexity
     
     def tokenize(self, text):

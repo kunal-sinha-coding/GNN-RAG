@@ -12,8 +12,7 @@ import torch.optim as optim
 
 from tqdm import tqdm
 tqdm.monitor_iterval = 0
-
-
+import llm.src.utils.utils as llm_utils
 
 #from dataset_load_paths import load_data
 from dataset_load import load_data
@@ -42,7 +41,8 @@ class Trainer_KBQA(object):
         self.device = torch.device('cuda' if args['use_cuda'] else 'cpu')
         self.reset_time = 0
         self.load_data(args, args['lm'])
-        self.train_text_data = datasets.load_dataset("rmanluo/RoG-cwq", split="train")
+        self.entities_names, self.names_entities = llm_utils.get_entities_names()
+        self.test_text_data = datasets.load_dataset("rmanluo/RoG-cwq", split="test")
 
         if 'decay_rate' in args:
             self.decay_rate = args['decay_rate']
@@ -104,6 +104,7 @@ class Trainer_KBQA(object):
         self.valid_data = dataset["valid"]
         self.test_data = dataset["test"]
         self.entity2id = dataset["entity2id"]
+        self.id2entity = {v: k for k, v in self.entity2id.items()}
         self.relation2id = dataset["relation2id"]
         self.word2id = dataset["word2id"]
         self.num_word = dataset["num_word"]
@@ -151,6 +152,7 @@ class Trainer_KBQA(object):
                 # self.logger.info("TEST F1: {:.4f}, H1: {:.4f}".format(eval_f1, eval_h1))
                 do_test = False
 
+                import pdb; pdb.set_trace()
                 if epoch > self.warmup_epoch:
                     if eval_h1 > self.best_h1:
                         self.best_h1 = eval_h1
@@ -217,25 +219,33 @@ class Trainer_KBQA(object):
         test_f1, test_hits, test_ems = self.evaluate(self.test_data, self.test_batch_size, write_info=True)
         self.logger.info("TEST F1: {:.4f}, H1: {:.4f}, EM {:.4f}".format(test_f1, test_hits, test_ems))
 
+    def get_candidates(self, batch):
+        cand_ids = batch[0]
+        candidates = []
+        for i, c_ids in enumerate(cand_ids):
+            for c in c_ids:
+                current_cand = ''
+                if c in self.id2entity:
+                    ent = self.id2entity[c]
+                    current_cand = self.entities_names[ent] if ent in self.entities_names else ent
+                candidates.append(current_cand)
+        return np.array(candidates)
+
     def train_epoch(self):
         self.model.train()
-        self.train_data.reset_batches(is_sequential=False)
+        self.test_data.reset_batches(is_sequential=True)
         losses = []
         actor_losses = []
         ent_losses = []
-        num_epoch = math.ceil(self.train_data.num_data / self.args['batch_size'])
+        num_epoch = math.ceil(self.test_data.num_data / self.args['batch_size'])
         h1_list_all = []
         f1_list_all = []
         for iteration in tqdm(range(num_epoch)):
-            batch = self.train_data.get_batch(iteration, self.args['batch_size'], self.args['fact_drop'])
-            
+            batch = self.test_data.get_batch(iteration, self.args['batch_size'], self.args['fact_drop'])
             self.optim_model.zero_grad()
-            start = iteration * self.args['batch_size']
-            text_batch = self.train_text_data[start : start + self.args['batch_size']]
-            loss, _, _, tp_list = self.model(
-                batch, text_batch, training=True, 
-                perplexity_dist=perplexity_dist
-            ) #ToDo: do not hardcode
+            text_batch = self.test_text_data[iteration] #Only works for bsz=1
+            text_batch["cand"] = self.get_candidates(batch)
+            loss, _, _, tp_list = self.model(batch, text_batch, training=True, replug=True)
             # if tp_list is not None:
             h1_list, f1_list = tp_list
             h1_list_all.extend(h1_list)

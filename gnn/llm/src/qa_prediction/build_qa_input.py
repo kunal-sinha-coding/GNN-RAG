@@ -2,13 +2,13 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.realpath(__file__)) + "/..")
 import utils
+import llm.src.utils.utils as llm_utils
+import llm.src.utils.graph_utils as graph_utils
 import random
 from typing import Callable
 
 import json
-with open('entities_names.json') as f:
-    entities_names = json.load(f)
-names_entities = {v: k for k, v in entities_names.items()}
+entities_names, names_entities = llm_utils.get_entities_names()
 
 import re 
 import string
@@ -94,17 +94,16 @@ class PromptBuilder(object):
             #graph = utils.build_graph(question_dict['graph'], entities, self.encrypt)
             skip_ents = []
             
-            graph = utils.build_graph(question_dict['graph'], skip_ents, self.encrypt)
+            graph = graph_utils.build_graph(question_dict['graph'], skip_ents, self.encrypt)
             if self.use_true:
                 rules = question_dict['ground_paths']
             elif self.use_random:
-                _, rules = utils.get_random_paths(entities, graph)
+                _, rules = llm_utils.get_random_paths(entities, graph)
             else:
                 rules = question_dict['predicted_paths']
             if len(rules) > 0:
                 reasoning_paths = self.apply_rules(graph, rules, entities)
-                lists_of_paths = [utils.path_to_string(p) for p in reasoning_paths]
-                
+                lists_of_paths = [llm_utils.path_to_string(p) for p in reasoning_paths]
                 # context = "\n".join([utils.path_to_string(p) for p in reasoning_paths])
             else:
                 lists_of_paths = []
@@ -113,20 +112,18 @@ class PromptBuilder(object):
         if question_dict['cand'] is not None:
             if not self.add_rule:
                 skip_ents = []
-                graph = utils.build_graph(question_dict['graph'], skip_ents, self.encrypt)
+                graph = graph_utils.build_graph(question_dict['graph'], skip_ents, self.encrypt)
             lists_of_paths2 = []
             #print(question_dict['cand'])
-            reasoning_paths = utils.get_truth_paths(question_dict['q_entity'], question_dict['cand'], graph)
+            reasoning_paths = graph_utils.get_truth_paths(question_dict['q_entity'], question_dict['cand'], graph)
             for p in reasoning_paths:
-                if utils.path_to_string(p) not in lists_of_paths:
-                    lists_of_paths.append(utils.path_to_string(p))
+                #if llm_utils.path_to_string(p) not in lists_of_paths:
+                lists_of_paths.append(llm_utils.path_to_string(p))
             
             for p in reasoning_paths:
-                if utils.path_to_string(p) not in lists_of_paths2:
-                    lists_of_paths2.append(utils.path_to_string(p))
+                #if llm_utils.path_to_string(p) not in lists_of_paths2:
+                lists_of_paths2.append(llm_utils.path_to_string(p))
            
-        max_paths = 5 #ToDo: pass this in as an argument
-        lists_of_paths = lists_of_paths[:max_paths]
         input = self.QUESTION.format(question = question)
         # MCQ
         if len(question_dict['choices']) > 0:
@@ -171,9 +168,7 @@ class PromptBuilder(object):
                     )
                     for p_context in path_contexts
                 ]
-        
         input = self.prompt_template.format(instruction = instruction, input = input)
-            
         return input, input_list
     
     def check_prompt_length(self, prompt, list_of_paths, maximun_token):

@@ -7,6 +7,12 @@ def read_prompt(prompt_path):
         prompt_template = f"""{f.read()}"""
     return prompt_template
 
+def get_entities_names():
+    with open('entities_names.json') as f:
+        entities_names = json.load(f)
+    names_entities = {v: k for k, v in entities_names.items()}
+    return entities_names, names_entities
+
 def load_jsonl(file_path):
     data = []
     with open(file_path, 'r') as f:
@@ -39,8 +45,7 @@ def path_to_string(path: list) -> str:
             result += f"{h} -> {r} -> {t}"
         else:
             _, r, t = p
-            result += f" -> {r} -> {t}"
-            
+            result += f" -> {r} -> {t}" 
     return result.strip()
 
 class InstructFormater(object):

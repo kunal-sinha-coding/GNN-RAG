@@ -3,9 +3,8 @@ from collections import deque
 #import walker
 
 import json
-with open('entities_names.json') as f:
-    entities_names = json.load(f)
-names_entities = {v: k for k, v in entities_names.items()}
+import llm.src.utils.utils as llm_utils
+entities_names, names_entities = llm_utils.get_entities_names()
 
 def build_graph(graph: list, entities=None, encrypt=False) -> nx.Graph:
     G = nx.Graph()
@@ -52,17 +51,27 @@ def get_truth_paths(q_entity: list, a_entity: list, graph: nx.Graph) -> list:
     '''
     # Select paths
     paths = []
-    for h in q_entity:
-        if h not in graph:
-            continue
+    h = q_entity[0]
+    if h in graph:
         for t in a_entity:
-            if t not in graph:
-                continue
             try:
-                for p in nx.all_shortest_paths(graph, h, t):
-                    paths.append(p)
+                p = next(nx.all_shortest_paths(graph, h, t))
             except:
-                pass
+                p = []
+            paths.append(p)
+    #for h in q_entity:
+        #if h not in graph:
+            #continue
+        #for t in a_entity:
+            #if t not in graph:
+                #continue
+            #try:
+                #p = next(nx.all_shortest_paths(graph, h, t)) #Only get the first path
+                #paths.append(p)
+                #for p in nx.all_shortest_paths(graph, h, t):
+                    #paths.append(p)
+            #except:
+                #pass
     # Add relation to paths
     result_paths = []
     for p in paths:
@@ -85,6 +94,7 @@ def get_simple_paths(q_entity: list, a_entity: list, graph: nx.Graph, hop=2) -> 
             continue
         for t in a_entity:
             if t not in graph:
+                import pdb; pdb.set_trace()
                 continue
             try:
                 for p in nx.all_simple_edge_paths(graph, h, t, cutoff=hop):

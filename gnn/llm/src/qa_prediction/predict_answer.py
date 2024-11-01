@@ -3,6 +3,7 @@ import os
 
 sys.path.append(os.path.dirname(os.path.realpath(__file__)) + "/..")
 import utils
+import llm.src.utils.utils as llm_utils
 import argparse
 from tqdm import tqdm
 from llms.language_models import get_registed_model
@@ -16,10 +17,7 @@ from functools import partial
 import wandb
 
 import json
-
-with open('entities_names.json') as f:
-    entities_names = json.load(f)
-names_entities = {v: k for k, v in entities_names.items()}
+entities_names, names_entities = llm_utils.get_entities_names()
 
 import re
 import string
@@ -54,6 +52,7 @@ def load_gnn_rag(g_data_file, g_data_file2=None):
             data_file_d[line["id"]] = line
             data_file_gnn[line["id"]] = lineg
         print("ok1")
+    import pdb; pdb.set_trace()
     if g_data_file2 is not None:
         data_file = os.path.dirname(g_data_file2) + "/test.json"
         with open(data_file) as f_in, open(g_data_file2) as fg:
@@ -135,6 +134,7 @@ def prediction(data, processed_list, input_builder, model,
     data["cand"] = None
     id = data["id"]
     if data_file_gnn is not None:
+        import pdb; pdb.set_trace()
         lineg = data_file_gnn[data["id"]]
         cand = lineg['cand'] 
         predictiong = []
@@ -202,6 +202,7 @@ def main(args, LLM):
             rule_postfix = "random_rule"
 
     data_file_gnn = None
+    import pdb; pdb.set_trace()
     if os.path.exists(args.rule_path_g1):
         if not os.path.exists(args.rule_path_g2):
             data_file_gnn = load_gnn_rag(args.rule_path_g1)
