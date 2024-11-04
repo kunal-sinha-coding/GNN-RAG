@@ -52,7 +52,6 @@ def load_gnn_rag(g_data_file, g_data_file2=None):
             data_file_d[line["id"]] = line
             data_file_gnn[line["id"]] = lineg
         print("ok1")
-    import pdb; pdb.set_trace()
     if g_data_file2 is not None:
         data_file = os.path.dirname(g_data_file2) + "/test.json"
         with open(data_file) as f_in, open(g_data_file2) as fg:
@@ -134,7 +133,6 @@ def prediction(data, processed_list, input_builder, model,
     data["cand"] = None
     id = data["id"]
     if data_file_gnn is not None:
-        import pdb; pdb.set_trace()
         lineg = data_file_gnn[data["id"]]
         cand = lineg['cand'] 
         predictiong = []
@@ -160,6 +158,7 @@ def prediction(data, processed_list, input_builder, model,
         }
     
     input, input_list = input_builder.process_input(data)
+    import pdb; pdb.set_trace()
     llm_likelihood, llm_perplexity = None, None
     if input_list:
         llm_likelihood, llm_perplexity = model.calculate_perplexity(input_list, answer)
@@ -202,7 +201,6 @@ def main(args, LLM):
             rule_postfix = "random_rule"
 
     data_file_gnn = None
-    import pdb; pdb.set_trace()
     if os.path.exists(args.rule_path_g1):
         if not os.path.exists(args.rule_path_g2):
             data_file_gnn = load_gnn_rag(args.rule_path_g1)
@@ -282,7 +280,6 @@ def main(args, LLM):
                     fout.flush()
     else:
         for data in tqdm(dataset):
-            import pdb; pdb.set_trace()
             res = prediction(data, processed_list, input_builder, model, encrypt=args.encrypt, data_file_gnn=data_file_gnn, table=table)
             if res is not None:
                 if args.debug:

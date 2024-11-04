@@ -55,7 +55,7 @@ class ReaRev(BaseModel):
         self.llm_args = argparse.Namespace( #ToDo: dont hardcode
             add_rule=False, cot=False, d='RoG-cwq', data_path='rmanluo', debug=False, dtype='fp16', 
             each_line=False, encrypt=False, explain=False, filter_empty=False, force=False, 
-            max_new_tokens=512, maximun_token=200, model_name='RoG', model_path='TinyLlama/TinyLlama-1.1B-Chat-v0.6', 
+            max_new_tokens=512, maximun_token=512, model_name='RoG', model_path='rmanluo/RoG', 
             n=1, predict_path='llm/results/KGQA-GNN-RAG/rearev-sbert', prompt_path='llm/prompts/llama2_predict.txt', 
             rule_path='llm/results/gen_rule_path/RoG-cwq/RoG/test/predictions_3_False.jsonl', 
             rule_path_g1='llm/results/gnn/RoG-cwq/rearev-sbert/test.info', 
@@ -189,6 +189,7 @@ class ReaRev(BaseModel):
             tokenize=self.llm_model.tokenize,
         )
         text_batch["cand"] = np.take(text_batch["cand"], top_indices, axis=-1)
+        text_batch["cand"][0] = text_batch["answer"][0] #Temporarily added to text
         input, input_list = input_builder.process_input(text_batch)
         llm_likelihood, llm_perplexity = torch.zeros(len(text_batch["cand"])).to(self.device), torch.zeros(len(text_batch["cand"])).to(self.device)
         if input_list:

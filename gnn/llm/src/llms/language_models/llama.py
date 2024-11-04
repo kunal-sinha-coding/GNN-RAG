@@ -39,37 +39,81 @@ class Llama(BaseLanguageModel):
 
     def calculate_perplexity(self, inputs, answer, gamma=1.0):
         k = len(inputs)
-        self.tokenizer.padding_side = "left" #Pad prompt on the left side
-        prompt_encoding = self.tokenizer.batch_encode_plus(
-            inputs, return_tensors="pt", add_special_tokens=True, padding=True
+        #self.tokenizer.padding_side = "left" #Pad prompt on the left side
+        #prompt_encoding = self.tokenizer.batch_encode_plus(
+        #    inputs, return_tensors="pt", add_special_tokens=True, padding=True
+        #)
+        #reader_tok = prompt_encoding.input_ids.to(self.device)
+        #reader_mask = prompt_encoding.attention_mask.to(self.device)
+        #answer_encoding = self.tokenizer.batch_encode_plus(
+        #    answer[:1], return_tensors="pt", add_special_tokens=True #Only pick the first answer
+        #)
+        #answer_tok = answer_encoding.input_ids.repeat((k, 1))[:, 1:].to(self.device) #Cut off start token in answer
+        #answer_mask = answer_encoding.attention_mask.repeat((k, 1))[:, 1:].to(self.device)
+        #full_tok = torch.cat([reader_tok, answer_tok], dim=-1)
+        #full_mask = torch.cat([reader_mask, answer_mask], dim=-1)
+        # Encode the full inputs
+        full_inputs = [f"{inp}\n{answer[0]}" for inp in inputs] # Only use first answer; include space?
+        full_encoding = self.tokenizer.batch_encode_plus(
+            full_inputs, return_tensors="pt", padding=True
         )
-        reader_tok = prompt_encoding.input_ids.to(self.device)
-        reader_mask = prompt_encoding.attention_mask.to(self.device)
-        answer_encoding = self.tokenizer.batch_encode_plus(
-            answer[:1], return_tensors="pt", add_special_tokens=True #Only pick the first answer
-        )
-        answer_tok = answer_encoding.input_ids.repeat((k, 1))[:, 1:].to(self.device) #Cut off start token in answer
-        answer_mask = answer_encoding.attention_mask.repeat((k, 1))[:, 1:].to(self.device)
-        full_tok = torch.cat([reader_tok, answer_tok], dim=-1)
-        full_mask = torch.cat([reader_mask, answer_mask], dim=-1)
-        #print("Memory before forward pass: ", torch.cuda.mem_get_info()[0] / 1e9)
+        full_tok = full_encoding.input_ids.to(self.device)
+        full_mask = full_encoding.attention_mask.to(self.device)
+        seq_len = full_tok.size(-1)
+        # Encode the answer on its own so we can get its length
+        answer_encoding = self.tokenizer.batch_encode_plus([f"\n{answer[0]}"], return_tensors="pt")
+        answer_tok = answer_encoding.input_ids[:, 1:].to(self.device) #Ignore start token
+        answer_len = answer_tok.size(-1)
+        # Get logits of full sequence
         full_logits = self.llm_model(
-            input_ids=full_tok[:, :-1], #Dont predict next token logits after last token
+            input_ids=full_tok[:, :-1], # Don't predict next token logits after last token
             attention_mask=full_mask[:, :-1]
         ).logits
-        #print("Memory after forward pass: ", torch.cuda.mem_get_info()[0] / 1e9)
-        full_logits = full_logits[:, -answer_tok.size(1):] #Only look at logits for answer
-        full_labels = answer_tok.masked_fill(answer_mask == 0, IGNORE_INDEX)
-        token_loss = F.cross_entropy(
-            full_logits.reshape(-1, full_logits.shape[-1]),
-            full_labels.view(-1),
+        vocab_len = full_logits.size(-1)
+        # Because logits are for next token prediction, shift full_tok and full_mask right by 1
+        full_tok, full_mask = full_tok[:, 1:], full_mask[:, 1:]
+        # Flatten the inputs to F.cross_entropy so first dim is k * answer_len
+        full_logits_flat = full_logits.reshape(-1, vocab_len)
+        full_labels = full_tok.masked_fill(full_mask == 0, IGNORE_INDEX)
+        full_labels_flat = full_labels.reshape(-1)
+        # Get indices of first appearance of PAD token
+        #pad_indices = (full_tok == self.tokenizer.pad_token_id).long().argmax(dim=-1)
+        # If no PAD token, use seq_len
+        #no_pad = (full_tok != self.tokenizer.pad_token_id).all(dim=-1)
+        #pad_indices = torch.where(no_pad, seq_len, pad_indices)
+        # Create indices tensors with length k * answer_len to index the tokens for the answer
+        #pad_indices = pad_indices.repeat_interleave(answer_len)
+        #answer_indices = torch.arange(answer_len).repeat(k).to(self.device)
+        #lsr_logits = full_logits_flat[pad_indices - answer_len + answer_indices, :]
+        # Get labels and flatten
+        #full_tok_flat = full_tok.masked_fill(full_mask == 0, IGNORE_INDEX).view(-1)
+        #lsr_labels = full_tok_flat[pad_indices - answer_len + answer_indices]
+        # Compute cross entropy: flatten before passing in then undo
+        ce_loss = F.cross_entropy(
+            full_logits_flat,
+            full_labels_flat,
             ignore_index=IGNORE_INDEX,
             reduction="none"
         ).reshape(full_labels.shape)
-        z = (full_labels > -1).sum(dim=-1)
-        llm_perplexity = -token_loss.sum(dim=-1) / z
+        # Get indices where padding begins i.e sequence ends
+        pad_indices = (full_tok == self.tokenizer.pad_token_id).long().argmax(dim=-1)
+        pad_indices[pad_indices == 0] = seq_len # If no pad token, go to end of sequence 
+        # Create 2d index tensors of shape (k, answer_len)
+        pad_indices = pad_indices[:, None].repeat(1, answer_len)
+        start_indices = pad_indices - answer_len - 1 # pad_index - 1 is the last token of answer
+        answer_indices = start_indices + torch.arange(answer_len)[None, :].repeat(k, 1).to(self.device)
+        batch_indices = torch.arange(k)[:, None].repeat(1, answer_len).to(self.device)
+        # Grab the ce values of the answer tokens
+        ce_loss = ce_loss[batch_indices, answer_indices]
+        full_labels = full_labels[batch_indices, answer_indices]
+        # Get average of the loss, not counting mask tokens
+        z = (full_labels != IGNORE_INDEX).sum(dim=-1)
+        ce_loss = ce_loss.sum(dim=-1) / z
+        print("CE loss: ", ce_loss)
+        # Get perplexity and likelihood
+        llm_perplexity = -ce_loss.exp() # Take negative because lower ppl is better
         llm_likelihood = torch.softmax(llm_perplexity / gamma, dim=-1)
-        #print("Perplexity: ", llm_perplexity)
+        print("Perplexity: ", llm_perplexity)
         return llm_likelihood, llm_perplexity
     
     def tokenize(self, text):

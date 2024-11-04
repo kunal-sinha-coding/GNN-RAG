@@ -42,7 +42,7 @@ class Trainer_KBQA(object):
         self.reset_time = 0
         self.load_data(args, args['lm'])
         self.entities_names, self.names_entities = llm_utils.get_entities_names()
-        self.test_text_data = datasets.load_dataset("rmanluo/RoG-cwq", split="test")
+        self.train_text_data = datasets.load_dataset("rmanluo/RoG-cwq", split="train")
 
         if 'decay_rate' in args:
             self.decay_rate = args['decay_rate']
@@ -152,7 +152,6 @@ class Trainer_KBQA(object):
                 # self.logger.info("TEST F1: {:.4f}, H1: {:.4f}".format(eval_f1, eval_h1))
                 do_test = False
 
-                import pdb; pdb.set_trace()
                 if epoch > self.warmup_epoch:
                     if eval_h1 > self.best_h1:
                         self.best_h1 = eval_h1
@@ -233,17 +232,17 @@ class Trainer_KBQA(object):
 
     def train_epoch(self):
         self.model.train()
-        self.test_data.reset_batches(is_sequential=True)
+        self.train_data.reset_batches(is_sequential=True)
         losses = []
         actor_losses = []
         ent_losses = []
-        num_epoch = math.ceil(self.test_data.num_data / self.args['batch_size'])
+        num_epoch = math.ceil(self.train_data.num_data / self.args['batch_size'])
         h1_list_all = []
         f1_list_all = []
         for iteration in tqdm(range(num_epoch)):
-            batch = self.test_data.get_batch(iteration, self.args['batch_size'], self.args['fact_drop'])
+            batch = self.train_data.get_batch(iteration, self.args['batch_size'], self.args['fact_drop'])
             self.optim_model.zero_grad()
-            text_batch = self.test_text_data[iteration] #Only works for bsz=1
+            text_batch = self.train_text_data[iteration] #Only works for bsz=1
             text_batch["cand"] = self.get_candidates(batch)
             loss, _, _, tp_list = self.model(batch, text_batch, training=True, replug=True)
             # if tp_list is not None:
