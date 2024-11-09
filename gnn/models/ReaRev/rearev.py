@@ -175,7 +175,7 @@ class ReaRev(BaseModel):
         cur_loss = torch.sum(tp_loss) / curr_dist.size(0)
         return cur_loss
 
-    def get_perplexity_dist(self, text_batch, top_indices):
+    def get_llm_inputs(self, text_batch, top_indices):
         input_builder = PromptBuilder(
             self.llm_args.prompt_path,
             self.llm_args.encrypt,
@@ -190,10 +190,11 @@ class ReaRev(BaseModel):
         )
         text_batch["cand"] = np.take(text_batch["cand"], top_indices, axis=-1)
         input, input_list = input_builder.process_input(text_batch)
-        llm_likelihood, llm_perplexity = torch.zeros(len(text_batch["cand"])).to(self.device), torch.zeros(len(text_batch["cand"])).to(self.device)
-        if input_list:
-            llm_likelihood, llm_perplexity = self.llm_model.calculate_perplexity(input_list, text_batch["answer"])
-        return llm_likelihood.unsqueeze(0), llm_perplexity.unsqueeze(0)
+        return input, input_list
+
+    def evaluate_llm(self, input, answer):
+        prediction = model.generate_sentence(input).strip()
+        return (prediction == answer)
     
     def forward(self, batch, text_batch=None, training=False, replug=False, top_k=20):
         """
@@ -266,10 +267,13 @@ class ReaRev(BaseModel):
         # loss = 0
         # for pred_dist in self.dist_history:
         loss = 0.0
+        top_indices = pred_dist.sort(dim=-1).indices[0, -top_k:]
+        input, input_list = self.get_llm_inputs(text_batch, top_indices.cpu().numpy())
+        if not input_list:
+            continue
         if replug and text_batch:
-            top_indices = pred_dist.sort(dim=-1).indices[0, -top_k:]
             with torch.no_grad():
-                llm_likelihood, llm_perplexity = self.get_perplexity_dist(text_batch, top_indices.cpu().numpy())
+                llm_likelihood, llm_perplexity = self.llm_model.calculate_perplexity(input_list, text_batch["answer"])
             loss = self.calc_loss_label(curr_dist=pred_dist[:, top_indices], teacher_dist=llm_likelihood, label_valid=case_valid)
         else:
             loss = self.calc_loss_label(curr_dist=pred_dist, teacher_dist=answer_dist, label_valid=case_valid)
@@ -279,8 +283,9 @@ class ReaRev(BaseModel):
         if training:
             h1, f1 = self.get_eval_metric(pred_dist, answer_dist)
             tp_list = [h1.tolist(), f1.tolist()]
+            correct = self.evaluate_llm(input, text_batch["answer"])
         else:
             tp_list = None
-        return loss, pred, pred_dist, tp_list
+        return loss, pred, pred_dist, tp_list, correct
 
     

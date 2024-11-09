@@ -112,7 +112,7 @@ class Llama(BaseLanguageModel):
         # Get perplexity and likelihood
         llm_perplexity = -ce_loss.exp() # Take negative because lower ppl is better
         llm_likelihood = torch.softmax(llm_perplexity / gamma, dim=-1)
-        return llm_likelihood, llm_perplexity
+        return llm_likelihood[None, :], llm_perplexity[None, :]
     
     def tokenize(self, text):
         return len(self.tokenizer.tokenize(text))

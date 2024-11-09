@@ -158,7 +158,6 @@ def prediction(data, processed_list, input_builder, model,
         }
     
     input, input_list = input_builder.process_input(data)
-    import pdb; pdb.set_trace()
     llm_likelihood, llm_perplexity = None, None
     if input_list:
         llm_likelihood, llm_perplexity = model.calculate_perplexity(input_list, answer)

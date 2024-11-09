@@ -131,7 +131,7 @@ class Trainer_KBQA(object):
         print("Start Training------------------")
         for epoch in range(start_epoch, end_epoch + 1):
             st = time.time()
-            loss, extras, h1_list_all, f1_list_all = self.train_epoch()
+            loss, extras, h1_list_all, f1_list_all, accuracy = self.train_epoch()
 
             if self.decay_rate > 0:
                 self.scheduler.step()
@@ -139,6 +139,7 @@ class Trainer_KBQA(object):
             wandb.log({"Train loss": loss.item()})
             wandb.log({"Train h1": np.mean(h1_list_all)})
             wandb.log({"Train f1": np.mean(f1_list_all)})
+            wandb.log({"Train acc": {accuracy}})
             self.logger.info("Epoch: {}, loss : {:.4f}, time: {}".format(epoch + 1, loss, time.time() - st))
             self.logger.info("Training h1 : {:.4f}, f1 : {:.4f}".format(np.mean(h1_list_all), np.mean(f1_list_all)))
             
@@ -239,23 +240,25 @@ class Trainer_KBQA(object):
         num_epoch = 100#math.ceil(self.train_data.num_data / self.args['batch_size'])
         h1_list_all = []
         f1_list_all = []
+        correct_all = []
         for iteration in tqdm(range(num_epoch)):
             batch = self.train_data.get_batch(iteration, self.args['batch_size'], self.args['fact_drop'])
             self.optim_model.zero_grad()
             text_batch = self.train_text_data[iteration] #Only works for bsz=1
             text_batch["cand"] = self.get_candidates(batch)
-            loss, _, _, tp_list = self.model(batch, text_batch, training=True, replug=True)
+            loss, _, _, tp_list, correct = self.model(batch, text_batch, training=True, replug=True)
             # if tp_list is not None:
             h1_list, f1_list = tp_list
             h1_list_all.extend(h1_list)
             f1_list_all.extend(f1_list)
+            correct_all.append(correct)
             loss.backward()
             torch.nn.utils.clip_grad_norm_([param for name, param in self.model.named_parameters()],
                                            self.args['gradient_clip'])
             self.optim_model.step()
             losses.append(loss.item())
         extras = [0, 0]
-        return np.mean(losses), extras, h1_list_all, f1_list_all
+        return np.mean(losses), extras, h1_list_all, f1_list_all, np.mean(correct_all)
 
     
     def save_ckpt(self, reason="h1"):
