@@ -2,10 +2,10 @@
 ###ReaRev+SBERT training
 # --load_experiment relbert-full_cwq-rearev-final.ckpt
 # --num_epoch 200
-python3 main.py ReaRev --entity_dim 50 --num_epoch 2 --batch_size 1 --eval_every 1  \
+python3 main.py ReaRev --entity_dim 50 --num_epoch 200 --batch_size 1 --eval_every 1  \
  --lm relbert --num_iter 1 --num_ins 3 --num_gnn 3  --name cwq \
  --experiment_name prn_cwq-rearev-sbert --data_folder data/CWQ/ \
- --load_experiment prn_cwq-rearev-sbert-final.ckpt --warmup_epoch 1 #--num_epoch 100 --warmup_epoch 80
+ --warmup_epoch 80
 
 ###ReaRev+LMSR training
 #python3 main.py ReaRev  --entity_dim 50 --num_epoch 200 --batch_size 8 --eval_every 2  \

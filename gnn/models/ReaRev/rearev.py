@@ -189,14 +189,13 @@ class ReaRev(BaseModel):
             tokenize=self.llm_model.tokenize,
         )
         text_batch["cand"] = np.take(text_batch["cand"], top_indices, axis=-1)
-        text_batch["cand"][0] = text_batch["answer"][0] #Temporarily added to text
         input, input_list = input_builder.process_input(text_batch)
         llm_likelihood, llm_perplexity = torch.zeros(len(text_batch["cand"])).to(self.device), torch.zeros(len(text_batch["cand"])).to(self.device)
         if input_list:
             llm_likelihood, llm_perplexity = self.llm_model.calculate_perplexity(input_list, text_batch["answer"])
         return llm_likelihood.unsqueeze(0), llm_perplexity.unsqueeze(0)
     
-    def forward(self, batch, text_batch=None, training=False, replug=False, top_k=5):
+    def forward(self, batch, text_batch=None, training=False, replug=False, top_k=20):
         """
         Forward function: creates instructions and performs GNN reasoning.
         """

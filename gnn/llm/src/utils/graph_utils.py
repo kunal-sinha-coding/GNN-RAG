@@ -51,6 +51,8 @@ def get_truth_paths(q_entity: list, a_entity: list, graph: nx.Graph) -> list:
     '''
     # Select paths
     paths = []
+    if len(q_entity) == 0 or len(a_entity) == 0:
+        return paths
     h = q_entity[0]
     if h in graph:
         for t in a_entity:
@@ -94,7 +96,6 @@ def get_simple_paths(q_entity: list, a_entity: list, graph: nx.Graph, hop=2) -> 
             continue
         for t in a_entity:
             if t not in graph:
-                import pdb; pdb.set_trace()
                 continue
             try:
                 for p in nx.all_simple_edge_paths(graph, h, t, cutoff=hop):

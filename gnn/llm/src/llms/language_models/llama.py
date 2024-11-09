@@ -109,11 +109,9 @@ class Llama(BaseLanguageModel):
         # Get average of the loss, not counting mask tokens
         z = (full_labels != IGNORE_INDEX).sum(dim=-1)
         ce_loss = ce_loss.sum(dim=-1) / z
-        print("CE loss: ", ce_loss)
         # Get perplexity and likelihood
         llm_perplexity = -ce_loss.exp() # Take negative because lower ppl is better
         llm_likelihood = torch.softmax(llm_perplexity / gamma, dim=-1)
-        print("Perplexity: ", llm_perplexity)
         return llm_likelihood, llm_perplexity
     
     def tokenize(self, text):

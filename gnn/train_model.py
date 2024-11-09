@@ -236,7 +236,7 @@ class Trainer_KBQA(object):
         losses = []
         actor_losses = []
         ent_losses = []
-        num_epoch = math.ceil(self.train_data.num_data / self.args['batch_size'])
+        num_epoch = 100#math.ceil(self.train_data.num_data / self.args['batch_size'])
         h1_list_all = []
         f1_list_all = []
         for iteration in tqdm(range(num_epoch)):
