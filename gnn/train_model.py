@@ -43,6 +43,7 @@ class Trainer_KBQA(object):
         self.load_data(args, args['lm'])
         self.entities_names, self.names_entities = llm_utils.get_entities_names()
         self.train_text_data = datasets.load_dataset("rmanluo/RoG-cwq", split="train")
+        self.test_text_data = datasets.load_dataset("rmanluo/RoG-cwq", split="test")
 
         if 'decay_rate' in args:
             self.decay_rate = args['decay_rate']
@@ -131,7 +132,7 @@ class Trainer_KBQA(object):
         print("Start Training------------------")
         for epoch in range(start_epoch, end_epoch + 1):
             st = time.time()
-            loss, extras, h1_list_all, f1_list_all, accuracy = self.train_epoch()
+            loss, extras, h1_list_all, f1_list_all, accuracy, recall_all = self.train_epoch()
 
             if self.decay_rate > 0:
                 self.scheduler.step()
@@ -139,7 +140,10 @@ class Trainer_KBQA(object):
             wandb.log({"Train loss": loss.item()})
             wandb.log({"Train h1": np.mean(h1_list_all)})
             wandb.log({"Train f1": np.mean(f1_list_all)})
-            wandb.log({"Train acc": {accuracy}})
+            wandb.log({"Train acc": accuracy})
+            wandb.log({"Train recall@1": (recall_all <= 0).mean()})
+            wandb.log({"Train recall@4": (recall_all <= 3).mean()})
+            wandb.log({"Train recall@8": (recall_all <= 7).mean()})
             self.logger.info("Epoch: {}, loss : {:.4f}, time: {}".format(epoch + 1, loss, time.time() - st))
             self.logger.info("Training h1 : {:.4f}, f1 : {:.4f}".format(np.mean(h1_list_all), np.mean(f1_list_all)))
             
@@ -220,8 +224,8 @@ class Trainer_KBQA(object):
         self.logger.info("TEST F1: {:.4f}, H1: {:.4f}, EM {:.4f}".format(test_f1, test_hits, test_ems))
 
     def get_candidates(self, batch):
-        cand_ids = batch[0]
         candidates = []
+        cand_ids = batch[0]
         for i, c_ids in enumerate(cand_ids):
             for c in c_ids:
                 current_cand = ''
@@ -237,28 +241,35 @@ class Trainer_KBQA(object):
         losses = []
         actor_losses = []
         ent_losses = []
-        num_epoch = 100#math.ceil(self.train_data.num_data / self.args['batch_size'])
+        num_epoch = 1000#math.ceil(self.train_data.num_data / self.args['batch_size']) # ToDo: dont hardcode
         h1_list_all = []
         f1_list_all = []
         correct_all = []
+        recall_all = []
         for iteration in tqdm(range(num_epoch)):
             batch = self.train_data.get_batch(iteration, self.args['batch_size'], self.args['fact_drop'])
             self.optim_model.zero_grad()
             text_batch = self.train_text_data[iteration] #Only works for bsz=1
+            if text_batch["a_entity"][0] not in np.array(text_batch["graph"]).flatten(): #Skip if a_entity cannot be found; bad signal
+                continue
             text_batch["cand"] = self.get_candidates(batch)
-            loss, _, _, tp_list, correct = self.model(batch, text_batch, training=True, replug=True)
+            loss, _, _, tp_list, correct, recall = self.model(batch, text_batch, training=True, replug=True)
             # if tp_list is not None:
             h1_list, f1_list = tp_list
             h1_list_all.extend(h1_list)
             f1_list_all.extend(f1_list)
             correct_all.append(correct)
+            recall_all.append(recall)
             loss.backward()
             torch.nn.utils.clip_grad_norm_([param for name, param in self.model.named_parameters()],
                                            self.args['gradient_clip'])
             self.optim_model.step()
             losses.append(loss.item())
+            wandb.log({"Train epoch loss": loss.item()})
+            wandb.log({"Train epoch num correct": np.sum(correct_all)})
+            wandb.log({"Train epoch recall": recall})
         extras = [0, 0]
-        return np.mean(losses), extras, h1_list_all, f1_list_all, np.mean(correct_all)
+        return np.mean(losses), extras, h1_list_all, f1_list_all, np.mean(correct_all), np.array(recall_all)
 
     
     def save_ckpt(self, reason="h1"):

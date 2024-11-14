@@ -93,7 +93,6 @@ class PromptBuilder(object):
             entities = question_dict['q_entity']
             #graph = utils.build_graph(question_dict['graph'], entities, self.encrypt)
             skip_ents = []
-            
             graph = graph_utils.build_graph(question_dict['graph'], skip_ents, self.encrypt)
             if self.use_true:
                 rules = question_dict['ground_paths']

@@ -132,5 +132,6 @@ class Llama(BaseLanguageModel):
         outputs = self.llm_model.generate(
             llm_input_ids, max_new_tokens=self.args.max_new_tokens
         )
-        generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        outputs = outputs[0, llm_input_ids.size(-1):] # Cut off prompt
+        generated_text = self.tokenizer.decode(outputs, skip_special_tokens=True)
         return generated_text # type: ignore

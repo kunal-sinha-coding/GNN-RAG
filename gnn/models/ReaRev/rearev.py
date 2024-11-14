@@ -14,6 +14,7 @@ from modules.query_update import AttnEncoder, Fusion, QueryReform
 import argparse
 from llm.src.llms.language_models.llama import Llama
 from llm.src.qa_prediction.build_qa_input import PromptBuilder
+import wandb
 
 VERY_SMALL_NUMBER = 1e-10
 VERY_NEG_NUMBER = -100000000000
@@ -55,13 +56,25 @@ class ReaRev(BaseModel):
         self.llm_args = argparse.Namespace( #ToDo: dont hardcode
             add_rule=False, cot=False, d='RoG-cwq', data_path='rmanluo', debug=False, dtype='fp16', 
             each_line=False, encrypt=False, explain=False, filter_empty=False, force=False, 
-            max_new_tokens=512, maximun_token=512, model_name='RoG', model_path='rmanluo/RoG', 
+            max_new_tokens=512, maximun_token=1024, model_name='RoG', model_path='rmanluo/RoG', 
             n=1, predict_path='llm/results/KGQA-GNN-RAG/rearev-sbert', prompt_path='llm/prompts/llama2_predict.txt', 
             rule_path='llm/results/gen_rule_path/RoG-cwq/RoG/test/predictions_3_False.jsonl', 
             rule_path_g1='llm/results/gnn/RoG-cwq/rearev-sbert/test.info', 
             rule_path_g2='None', split='test', use_random=False, use_true=False
         )
         self.llm_model = Llama(self.llm_args)
+        self.input_builder = PromptBuilder(
+            self.llm_args.prompt_path,
+            self.llm_args.encrypt,
+            self.llm_args.add_rule,
+            use_true=self.llm_args.use_true, 
+            cot=self.llm_args.cot,
+            explain=self.llm_args.explain,
+            use_random=self.llm_args.use_random,
+            each_line=self.llm_args.each_line,
+            maximun_token=self.llm_model.maximun_token,
+            tokenize=self.llm_model.tokenize
+        )
         print("Memory after LLM model: ", torch.cuda.mem_get_info()[0] / 1e9)
 
     def layers(self, args):
@@ -174,29 +187,12 @@ class ReaRev(BaseModel):
         tp_loss = tp_loss * label_valid
         cur_loss = torch.sum(tp_loss) / curr_dist.size(0)
         return cur_loss
-
-    def get_llm_inputs(self, text_batch, top_indices):
-        input_builder = PromptBuilder(
-            self.llm_args.prompt_path,
-            self.llm_args.encrypt,
-            self.llm_args.add_rule,
-            use_true=self.llm_args.use_true,
-            cot=self.llm_args.cot,
-            explain=self.llm_args.explain,
-            use_random=self.llm_args.use_random,
-            each_line=self.llm_args.each_line,
-            maximun_token=self.llm_model.maximun_token,
-            tokenize=self.llm_model.tokenize,
-        )
-        text_batch["cand"] = np.take(text_batch["cand"], top_indices, axis=-1)
-        input, input_list = input_builder.process_input(text_batch)
-        return input, input_list
-
+        
     def evaluate_llm(self, input, answer):
-        prediction = model.generate_sentence(input).strip()
-        return (prediction == answer)
+        prediction = self.llm_model.generate_sentence(input).strip()
+        return (prediction == answer[0])
     
-    def forward(self, batch, text_batch=None, training=False, replug=False, top_k=20):
+    def forward(self, batch, text_batch=None, training=False, replug=False, top_k=20, debug_ppl=True):
         """
         Forward function: creates instructions and performs GNN reasoning.
         """
@@ -268,12 +264,22 @@ class ReaRev(BaseModel):
         # for pred_dist in self.dist_history:
         loss = 0.0
         top_indices = pred_dist.sort(dim=-1).indices[0, -top_k:]
-        input, input_list = self.get_llm_inputs(text_batch, top_indices.cpu().numpy())
-        if not input_list:
-            continue
+        text_batch["cand"] = np.take(text_batch["cand"], top_indices.cpu().numpy(), axis=-1)
+        input, input_list = self.input_builder.process_input(text_batch)
+        recall = 0
         if replug and text_batch:
             with torch.no_grad():
-                llm_likelihood, llm_perplexity = self.llm_model.calculate_perplexity(input_list, text_batch["answer"])
+                llm_likelihood, llm_perplexity = torch.zeros((1, top_k)).to(self.device), torch.zeros((1, top_k)).to(self.device)
+                if input_list:
+                    llm_likelihood, llm_perplexity = self.llm_model.calculate_perplexity(input_list, text_batch["answer"])
+                    print(llm_perplexity)
+                    if debug_ppl:
+                        text_batch["cand"] = text_batch["a_entity"]
+                        gt_input, gt_input_list = self.input_builder.process_input(text_batch)
+                        gt_likelihood, gt_perplexity = self.llm_model.calculate_perplexity(gt_input_list, text_batch["answer"])
+                        print(gt_perplexity)
+                        recall = top_k - max(torch.searchsorted(llm_perplexity[0], gt_perplexity[0])).item()
+                        
             loss = self.calc_loss_label(curr_dist=pred_dist[:, top_indices], teacher_dist=llm_likelihood, label_valid=case_valid)
         else:
             loss = self.calc_loss_label(curr_dist=pred_dist, teacher_dist=answer_dist, label_valid=case_valid)
@@ -286,6 +292,6 @@ class ReaRev(BaseModel):
             correct = self.evaluate_llm(input, text_batch["answer"])
         else:
             tp_list = None
-        return loss, pred, pred_dist, tp_list, correct
+        return loss, pred, pred_dist, tp_list, correct, recall
 
     
