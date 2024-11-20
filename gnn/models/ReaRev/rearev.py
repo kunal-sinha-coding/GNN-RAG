@@ -263,27 +263,32 @@ class ReaRev(BaseModel):
         # loss = 0
         # for pred_dist in self.dist_history:
         loss = 0.0
-        top_indices = pred_dist.sort(dim=-1).indices[0, -top_k:]
-        text_batch["cand"] = np.take(text_batch["cand"], top_indices.cpu().numpy(), axis=-1)
-        input, input_list = self.input_builder.process_input(text_batch)
+        #top_indices = pred_dist.sort(dim=-1).indices[0, -top_k:]
+        #text_batch["cand"] = np.take(text_batch["cand"], top_indices.cpu().numpy(), axis=-1)
+        candidates = text_batch["cand"]
+        #input, input_list = self.input_builder.process_input(text_batch)
         recall = 0
         if replug and text_batch:
             with torch.no_grad():
-                llm_likelihood, llm_perplexity = torch.zeros((1, top_k)).to(self.device), torch.zeros((1, top_k)).to(self.device)
-                if input_list:
-                    llm_likelihood, llm_perplexity = self.llm_model.calculate_perplexity(input_list, text_batch["answer"])
-                    import pdb; pdb.set_trace()
-                    if debug_ppl:
-                        text_batch["cand"] = text_batch["a_entity"][:1]
-                        gt_input, gt_input_list = self.input_builder.process_input(text_batch)
-                        gt_likelihood, gt_perplexity = self.llm_model.calculate_perplexity(gt_input_list, text_batch["answer"])
-                        print(gt_perplexity)
-                        if gt_perplexity[0, 0] < -3:
-                            print("High ppl for gt")
-                        recall = top_k - torch.searchsorted(llm_perplexity[0], gt_perplexity[0]).item()
-                        
-            loss = self.calc_loss_label(curr_dist=pred_dist[:, top_indices], teacher_dist=llm_likelihood, label_valid=case_valid)
-            import pdb; pdb.set_trace()
+                #llm_likelihood, llm_perplexity = torch.zeros((1, top_k)).to(self.device), torch.zeros((1, top_k)).to(self.device)
+                #if input_list:
+                perplexities = []
+                for i in range(10):
+                    # TEMPORARY to test if we get CUDA memory error
+                    text_batch["cand"] = candidates[i * top_k : (i + 1) * top_k]
+                    input, input_list = self.input_builder.process_input(text_batch)
+                    curr_likelihood, curr_perplexity = self.llm_model.calculate_perplexity(input_list, text_batch["answer"])
+                    perplexities.append(curr_perplexity)
+                llm_perplexity = torch.cat(perplexities, dim=-1)
+                llm_likelihood = torch.softmax(llm_perplexity * 5000, dim=-1)
+                if debug_ppl:
+                    text_batch["cand"] = text_batch["a_entity"][:1]
+                    gt_input, gt_input_list = self.input_builder.process_input(text_batch)
+                    gt_likelihood, gt_perplexity = self.llm_model.calculate_perplexity(gt_input_list, text_batch["answer"])
+                    if gt_perplexity[0, 0] < -2:
+                        print("High ppl for gt")
+                    recall = top_k - torch.searchsorted(llm_perplexity[0], gt_perplexity[0]).item()
+            loss = self.calc_loss_label(curr_dist=pred_dist[:, :-1], teacher_dist=llm_likelihood, label_valid=case_valid)
         else:
             loss = self.calc_loss_label(curr_dist=pred_dist, teacher_dist=answer_dist, label_valid=case_valid)
 

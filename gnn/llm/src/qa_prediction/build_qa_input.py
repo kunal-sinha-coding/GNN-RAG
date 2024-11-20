@@ -178,7 +178,7 @@ class PromptBuilder(object):
             return all_paths
         else:
             # Shuffle the paths
-            random.shuffle(list_of_paths)
+            #random.shuffle(list_of_paths) #DO NOT shuffle because this means input_list indices dont match with text_batch['cand']
             new_list_of_paths = []
             # check the length of the prompt
             for p in list_of_paths:
