@@ -116,8 +116,9 @@ class PromptBuilder(object):
             #print(question_dict['cand'])
             reasoning_paths = graph_utils.get_truth_paths(question_dict['q_entity'], question_dict['cand'], graph)
             for p in reasoning_paths:
-                #if llm_utils.path_to_string(p) not in lists_of_paths:
-                lists_of_paths.append(llm_utils.path_to_string(p))
+                #if llm_utils.path_to_string(p) not in lists_of_paths: 
+                # Default to candidate only if empty reasoning path
+                lists_of_paths.append(llm_utils.path_to_string(p) )
             
             for p in reasoning_paths:
                 #if llm_utils.path_to_string(p) not in lists_of_paths2:
@@ -149,7 +150,6 @@ class PromptBuilder(object):
             instruction += self.EACH_LINE
         
         input_list = []
-
         if self.add_rule or question_dict['cand'] is not None:
             other_prompt = self.prompt_template.format(instruction = instruction, input = self.GRAPH_CONTEXT.format(context = "") + input)
             context = self.check_prompt_length(other_prompt, lists_of_paths, self.maximun_token)
@@ -157,13 +157,13 @@ class PromptBuilder(object):
             input = self.GRAPH_CONTEXT.format(context = context) + input
             if return_list:
                 path_contexts = [
-                    self.GRAPH_CONTEXT.format(context=path)
+                    self.GRAPH_CONTEXT.format(context=path) + self.QUESTION.format(question=question)
                     for path in lists_of_paths
                 ]
                 input_list = [
                     (
-                        self.prompt_template.format(instruction=instruction, input=p_context)
-                        + self.QUESTION.format(question=question)
+                        self.prompt_template.format(instruction=instruction, input=p_context) 
+                        #+ self.QUESTION.format(question=question)
                     )
                     for p_context in path_contexts
                 ]

@@ -192,7 +192,7 @@ class ReaRev(BaseModel):
         prediction = self.llm_model.generate_sentence(input).strip()
         return (prediction == answer[0])
     
-    def forward(self, batch, text_batch=None, training=False, replug=False, top_k=20, debug_ppl=True):
+    def forward(self, batch, text_batch=None, training=False, replug=False, top_k=200, debug_ppl=True):
         """
         Forward function: creates instructions and performs GNN reasoning.
         """
@@ -272,15 +272,18 @@ class ReaRev(BaseModel):
                 llm_likelihood, llm_perplexity = torch.zeros((1, top_k)).to(self.device), torch.zeros((1, top_k)).to(self.device)
                 if input_list:
                     llm_likelihood, llm_perplexity = self.llm_model.calculate_perplexity(input_list, text_batch["answer"])
-                    print(llm_perplexity)
+                    import pdb; pdb.set_trace()
                     if debug_ppl:
-                        text_batch["cand"] = text_batch["a_entity"]
+                        text_batch["cand"] = text_batch["a_entity"][:1]
                         gt_input, gt_input_list = self.input_builder.process_input(text_batch)
                         gt_likelihood, gt_perplexity = self.llm_model.calculate_perplexity(gt_input_list, text_batch["answer"])
                         print(gt_perplexity)
-                        recall = top_k - max(torch.searchsorted(llm_perplexity[0], gt_perplexity[0])).item()
+                        if gt_perplexity[0, 0] < -3:
+                            print("High ppl for gt")
+                        recall = top_k - torch.searchsorted(llm_perplexity[0], gt_perplexity[0]).item()
                         
             loss = self.calc_loss_label(curr_dist=pred_dist[:, top_indices], teacher_dist=llm_likelihood, label_valid=case_valid)
+            import pdb; pdb.set_trace()
         else:
             loss = self.calc_loss_label(curr_dist=pred_dist, teacher_dist=answer_dist, label_valid=case_valid)
 

@@ -241,7 +241,7 @@ class Trainer_KBQA(object):
         losses = []
         actor_losses = []
         ent_losses = []
-        num_epoch = 1000#math.ceil(self.train_data.num_data / self.args['batch_size']) # ToDo: dont hardcode
+        num_epoch = 200#math.ceil(self.train_data.num_data / self.args['batch_size']) # ToDo: dont hardcode
         h1_list_all = []
         f1_list_all = []
         correct_all = []
@@ -250,7 +250,8 @@ class Trainer_KBQA(object):
             batch = self.train_data.get_batch(iteration, self.args['batch_size'], self.args['fact_drop'])
             self.optim_model.zero_grad()
             text_batch = self.train_text_data[iteration] #Only works for bsz=1
-            if text_batch["a_entity"][0] not in np.array(text_batch["graph"]).flatten(): #Skip if a_entity cannot be found; bad signal
+            if (text_batch["a_entity"][0] not in np.array(text_batch["graph"]).flatten()
+                or text_batch["a_entity"][0] == text_batch["q_entity"][0]): #Both cases where no valid reason path
                 continue
             text_batch["cand"] = self.get_candidates(batch)
             loss, _, _, tp_list, correct, recall = self.model(batch, text_batch, training=True, replug=True)
