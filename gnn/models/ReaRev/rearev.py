@@ -188,11 +188,12 @@ class ReaRev(BaseModel):
         cur_loss = torch.sum(tp_loss) / curr_dist.size(0)
         return cur_loss
         
-    def evaluate_llm(self, input, answer):
+    def evaluate_llm(self, text_batch):
+        input, _ = self.input_builder.process_input(text_batch)
         prediction = self.llm_model.generate_sentence(input).strip()
-        return (prediction == answer[0])
+        return (prediction == text_batch["answer"][0])
     
-    def forward(self, batch, text_batch=None, training=False, replug=False, top_k=200, debug_ppl=True):
+    def forward(self, batch, text_batch=None, training=False, replug=True, top_k=10, debug_ppl=True):
         """
         Forward function: creates instructions and performs GNN reasoning.
         """
@@ -262,42 +263,69 @@ class ReaRev(BaseModel):
         # filter no answer training case
         # loss = 0
         # for pred_dist in self.dist_history:
-        loss = 0.0
-        #top_indices = pred_dist.sort(dim=-1).indices[0, -top_k:]
-        #text_batch["cand"] = np.take(text_batch["cand"], top_indices.cpu().numpy(), axis=-1)
-        candidates = text_batch["cand"]
-        #input, input_list = self.input_builder.process_input(text_batch)
-        recall = 0
-        if replug and text_batch:
-            with torch.no_grad():
-                #llm_likelihood, llm_perplexity = torch.zeros((1, top_k)).to(self.device), torch.zeros((1, top_k)).to(self.device)
-                #if input_list:
-                perplexities = []
-                for i in range(10):
-                    # TEMPORARY to test if we get CUDA memory error
-                    text_batch["cand"] = candidates[i * top_k : (i + 1) * top_k]
+        loss = torch.tensor([0.0])
+        recall = 0.0
+        top_indices = pred_dist.sort(dim=-1).indices[0, -top_k:]
+        text_batch["cand"] = np.take(text_batch["cand"], top_indices.cpu().numpy(), axis=-1)
+        if training:
+            # MANUAL add in answer
+            correct_idx = answer_dist[0].argmax().item()
+            top_indices[0] = correct_idx
+            text_batch["cand"][0] = text_batch["a_entity"][0]
+            if replug and text_batch:
+                with torch.no_grad():
+                    #llm_likelihood, llm_perplexity = torch.zeros((1, top_k)).to(self.device), torch.zeros((1, top_k)).to(self.device)
+                    #if input_list:
+                    #perplexities = []
+                    #for i in range(20):
+                        # TEMPORARY to test if we get CUDA memory error
+                        #start_idx = i * top_k
+                        #end_idx = (i + 1) * top_k
+                        #if (i + 2) * top_k > len(candidates):
+                        #    end_idx = len(candidates)
+                        #text_batch["cand"] = candidates[start_idx : end_idx]
+                        #_, input_list = self.input_builder.process_input(text_batch)
+                        #try:
+                        #    curr_perplexity = self.llm_model.calculate_perplexity(input_list, text_batch["answer"])
+                        #except:
+                        #    import pdb; pdb.set_trace()
+                        #perplexities.append(curr_perplexity)
+                    #llm_perplexity = torch.cat(perplexities, dim=-1)
+                    #llm_likelihood = torch.softmax(llm_perplexity * 5000, dim=-1)
                     input, input_list = self.input_builder.process_input(text_batch)
-                    curr_likelihood, curr_perplexity = self.llm_model.calculate_perplexity(input_list, text_batch["answer"])
-                    perplexities.append(curr_perplexity)
-                llm_perplexity = torch.cat(perplexities, dim=-1)
-                llm_likelihood = torch.softmax(llm_perplexity * 5000, dim=-1)
-                if debug_ppl:
-                    text_batch["cand"] = text_batch["a_entity"][:1]
-                    gt_input, gt_input_list = self.input_builder.process_input(text_batch)
-                    gt_likelihood, gt_perplexity = self.llm_model.calculate_perplexity(gt_input_list, text_batch["answer"])
-                    if gt_perplexity[0, 0] < -2:
-                        print("High ppl for gt")
-                    recall = top_k - torch.searchsorted(llm_perplexity[0], gt_perplexity[0]).item()
-            loss = self.calc_loss_label(curr_dist=pred_dist[:, :-1], teacher_dist=llm_likelihood, label_valid=case_valid)
-        else:
-            loss = self.calc_loss_label(curr_dist=pred_dist, teacher_dist=answer_dist, label_valid=case_valid)
+                    llm_perplexity_top_k = self.llm_model.calculate_perplexity(input_list, text_batch["answer"])
+                    best_ppl_idx = llm_perplexity_top_k[0].argmax().item()
+                    #llm_likelihood_top_k = torch.softmax(llm_perplexity_top_k * 5000, dim=-1)
+                    llm_likelihood = torch.zeros(pred_dist.shape).to(self.device)
+                    llm_likelihood[:, top_indices[best_ppl_idx]] = 1.0
+                    #llm_likelihood[:, top_indices] = llm_likelihood_top_k[0].clone() # Pad llm_likelihood with 0s
+                    if debug_ppl:
+                        recall = llm_likelihood.size(1) - (llm_likelihood[0].sort().indices == correct_idx).nonzero(as_tuple=True)[0].item() - 1
+                    #if debug_ppl:
+                        #text_batch["cand"] = text_batch["a_entity"][:1]
+                        #gt_input, gt_input_list = self.input_builder.process_input(text_batch)
+                        #gt_perplexity = self.llm_model.calculate_perplexity(gt_input_list, text_batch["answer"])
+                        #recall = llm_perplexity.size(1) - torch.searchsorted(llm_perplexity[0], gt_perplexity[0]).item()
+                #temp_pred_dist = torch.cat((pred_dist[:, top_indices], pred_dist[:, correct_idx, None]), dim=-1)
+                #loss = self.calc_loss_label(curr_dist=temp_pred_dist, teacher_dist=llm_likelihood, label_valid=case_valid)
+                #if llm_likelihood[0].argmax(dim=-1).item() != correct_idx:
+                    #import pdb; pdb.set_trace()
+                #correct_ranking = (pred_dist[0].sort().indices == correct_idx).nonzero(as_tuple=True)[0].item()
+                if llm_likelihood[0].argmax().item() != answer_dist[0].argmax().item():
+                    print("Not the same top value!")
+                loss = self.calc_loss_label(curr_dist=pred_dist, teacher_dist=llm_likelihood, label_valid=case_valid)
+            else:
+                #temp_pred_dist = torch.cat((pred_dist[:, top_indices], pred_dist[:, correct_idx, None]), dim=-1)
+                #temp_answer_dist = torch.cat((answer_dist[:, top_indices], answer_dist[:, correct_idx, None]), dim=-1)
+                #loss = self.calc_loss_label(curr_dist=temp_pred_dist, teacher_dist=temp_answer_dist, label_valid=case_valid)
+                loss = self.calc_loss_label(curr_dist=pred_dist, teacher_dist=answer_dist, label_valid=case_valid)
 
         pred_dist = self.dist_history[-1]
         pred = torch.max(pred_dist, dim=1)[1]
+        correct = self.evaluate_llm(text_batch)
         if training:
             h1, f1 = self.get_eval_metric(pred_dist, answer_dist)
             tp_list = [h1.tolist(), f1.tolist()]
-            correct = self.evaluate_llm(input, text_batch["answer"])
         else:
             tp_list = None
         return loss, pred, pred_dist, tp_list, correct, recall

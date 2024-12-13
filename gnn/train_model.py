@@ -43,6 +43,7 @@ class Trainer_KBQA(object):
         self.load_data(args, args['lm'])
         self.entities_names, self.names_entities = llm_utils.get_entities_names()
         self.train_text_data = datasets.load_dataset("rmanluo/RoG-cwq", split="train")
+        self.val_text_data = datasets.load_dataset("rmanluo/RoG-cwq", split="validation")
         self.test_text_data = datasets.load_dataset("rmanluo/RoG-cwq", split="test")
 
         if 'decay_rate' in args:
@@ -142,16 +143,18 @@ class Trainer_KBQA(object):
             wandb.log({"Train f1": np.mean(f1_list_all)})
             wandb.log({"Train acc": accuracy})
             wandb.log({"Train recall@1": (recall_all <= 0).mean()})
+            wandb.log({"Train recall@2": (recall_all <= 1).mean()})
+            wandb.log({"Train recall@3": (recall_all <= 2).mean()})
             wandb.log({"Train recall@4": (recall_all <= 3).mean()})
-            wandb.log({"Train recall@8": (recall_all <= 7).mean()})
             self.logger.info("Epoch: {}, loss : {:.4f}, time: {}".format(epoch + 1, loss, time.time() - st))
             self.logger.info("Training h1 : {:.4f}, f1 : {:.4f}".format(np.mean(h1_list_all), np.mean(f1_list_all)))
             
             if (epoch + 1) % eval_every == 0:
-                eval_f1, eval_h1, eval_em = self.evaluate(self.valid_data, self.test_batch_size)
+                eval_f1, eval_h1, eval_em, eval_acc = self.evaluate(self.valid_data, self.test_batch_size, self.valid_text_data)
                 wandb.log({"Val f1": eval_f1})
                 wandb.log({"Val h1": eval_h1})
                 wandb.log({"Val em": eval_em})
+                wandb.log({"Val acc": eval_acc})
                 self.logger.info("EVAL F1: {:.4f}, H1: {:.4f}, EM {:.4f}".format(eval_f1, eval_h1, eval_em))
                 # eval_f1, eval_h1 = self.evaluate(self.test_data, self.test_batch_size)
                 # self.logger.info("TEST F1: {:.4f}, H1: {:.4f}".format(eval_f1, eval_h1))
@@ -169,10 +172,11 @@ class Trainer_KBQA(object):
                         self.logger.info("BEST EVAL F1: {:.4f}".format(eval_f1))
                         do_test = True
 
-                eval_f1, eval_h1, eval_em = self.evaluate(self.test_data, self.test_batch_size)
+                eval_f1, eval_h1, eval_em, eval_acc = self.evaluate(self.test_data, self.test_batch_size, self.test_text_data)
                 wandb.log({"Test f1": eval_f1})
                 wandb.log({"Test h1": eval_h1})
                 wandb.log({"Test em": eval_em})
+                wandb.log({"Test acc": eval_acc})
                 self.logger.info("TEST F1: {:.4f}, H1: {:.4f}, EM {:.4f}".format(eval_f1, eval_h1, eval_em))
                 # if do_test:
                 #     eval_f1, eval_h1 = self.evaluate(self.test_data, self.test_batch_size)
@@ -199,13 +203,13 @@ class Trainer_KBQA(object):
     def evaluate_best(self):
         filename = os.path.join(self.args['checkpoint_dir'], "{}-h1.ckpt".format(self.args['experiment_name']))
         self.load_ckpt(filename)
-        eval_f1, eval_h1, eval_em = self.evaluate(self.test_data, self.test_batch_size, write_info=False)
+        eval_f1, eval_h1, eval_em, eval_acc = self.evaluate(self.test_data, self.test_batch_size, write_info=False)
         self.logger.info("Best h1 evaluation")
         self.logger.info("TEST F1: {:.4f}, H1: {:.4f}, EM {:.4f}".format(eval_f1, eval_h1, eval_em))
 
         filename = os.path.join(self.args['checkpoint_dir'], "{}-f1.ckpt".format(self.args['experiment_name']))
         self.load_ckpt(filename)
-        eval_f1, eval_h1, eval_em = self.evaluate(self.test_data, self.test_batch_size,  write_info=False)
+        eval_f1, eval_h1, eval_em, eval_acc = self.evaluate(self.test_data, self.test_batch_size,  write_info=False)
         self.logger.info("Best f1 evaluation")
         self.logger.info("TEST F1: {:.4f}, H1: {:.4f}, EM {:.4f}".format(eval_f1, eval_h1, eval_em))
 
@@ -218,22 +222,10 @@ class Trainer_KBQA(object):
     def evaluate_single(self, filename):
         if filename is not None:
             self.load_ckpt(filename)
-        eval_f1, eval_hits, eval_ems = self.evaluate(self.valid_data, self.test_batch_size, write_info=False)
+        eval_f1, eval_hits, eval_ems, eval_acc = self.evaluate(self.valid_data, self.test_batch_size, write_info=False)
         self.logger.info("EVAL F1: {:.4f}, H1: {:.4f}, EM {:.4f}".format(eval_f1, eval_hits, eval_ems))
-        test_f1, test_hits, test_ems = self.evaluate(self.test_data, self.test_batch_size, write_info=True)
+        test_f1, test_hits, test_ems, test_acc = self.evaluate(self.test_data, self.test_batch_size, write_info=True)
         self.logger.info("TEST F1: {:.4f}, H1: {:.4f}, EM {:.4f}".format(test_f1, test_hits, test_ems))
-
-    def get_candidates(self, batch):
-        candidates = []
-        cand_ids = batch[0]
-        for i, c_ids in enumerate(cand_ids):
-            for c in c_ids:
-                current_cand = ''
-                if c in self.id2entity:
-                    ent = self.id2entity[c]
-                    current_cand = self.entities_names[ent] if ent in self.entities_names else ent
-                candidates.append(current_cand)
-        return np.array(candidates)
 
     def train_epoch(self):
         self.model.train()
@@ -241,7 +233,7 @@ class Trainer_KBQA(object):
         losses = []
         actor_losses = []
         ent_losses = []
-        num_epoch = 200#math.ceil(self.train_data.num_data / self.args['batch_size']) # ToDo: dont hardcode
+        num_epoch = 2#math.ceil(self.train_data.num_data / self.args['batch_size']) # ToDo: dont hardcode
         h1_list_all = []
         f1_list_all = []
         correct_all = []
@@ -250,11 +242,13 @@ class Trainer_KBQA(object):
             batch = self.train_data.get_batch(iteration, self.args['batch_size'], self.args['fact_drop'])
             self.optim_model.zero_grad()
             text_batch = self.train_text_data[iteration] #Only works for bsz=1
-            if (text_batch["a_entity"][0] not in np.array(text_batch["graph"]).flatten()
-                or text_batch["a_entity"][0] == text_batch["q_entity"][0]): #Both cases where no valid reason path
+            text_batch["cand"] = self.train_data.get_candidates(batch)
+            if (len(text_batch["q_entity"]) < 1 or len(text_batch["a_entity"]) < 1 # No question or answer entities
+                or text_batch["q_entity"][0] not in np.array(text_batch["graph"]).flatten() # Question entity not in graph
+                or text_batch["a_entity"][0] not in np.array(text_batch["graph"]).flatten() # Answer entity not in graph
+                or text_batch["a_entity"][0] == text_batch["q_entity"][0]): # Question and answer entity are the same
                 continue
-            text_batch["cand"] = self.get_candidates(batch)
-            loss, _, _, tp_list, correct, recall = self.model(batch, text_batch, training=True, replug=True)
+            loss, _, _, tp_list, correct, recall = self.model(batch, text_batch, training=True)
             # if tp_list is not None:
             h1_list, f1_list = tp_list
             h1_list_all.extend(h1_list)

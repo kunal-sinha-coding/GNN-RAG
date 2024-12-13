@@ -14,7 +14,7 @@ class Llama(BaseLanguageModel):
         parser.add_argument('--model_path', type=str, help="HUGGING FACE MODEL or model path", default='meta-llama/Llama-2-7b-chat-hf')
         parser.add_argument('--max_new_tokens', type=int, help="max length", default=512)
         parser.add_argument('--maximun_token', type=int, help="max length of prompt", default=924)
-        parser.add_argument('--dtype', choices=['fp32', 'fp16', 'bf16'], default='fp16')
+        parser.add_argument('--dtype', choices=['fp32', 'fp16', 'bf16'], default='bf16')
 
     def __init__(self, args):
         self.args = args
@@ -24,7 +24,7 @@ class Llama(BaseLanguageModel):
         self.llm_model = LlamaForCausalLM.from_pretrained(
             self.args.model_path,
             token="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"
-        ).to(self.device)
+        ).to(self.device, dtype=torch.float16)
         print("Memory after LLM model: ", torch.cuda.mem_get_info()[0] / 1e9)
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.args.model_path, use_fast=False,
@@ -38,7 +38,7 @@ class Llama(BaseLanguageModel):
         #)
         #return model
 
-    def calculate_perplexity(self, inputs, answer, gamma=5000):
+    def calculate_perplexity(self, inputs, answer):
         k = len(inputs)
         #self.tokenizer.padding_side = "left" #Pad prompt on the left side
         #prompt_encoding = self.tokenizer.batch_encode_plus(
@@ -74,10 +74,12 @@ class Llama(BaseLanguageModel):
         #full_tok = torch.cat([prompt_tok, repeat_answer_tok], dim=-1)
         #full_mask = torch.cat([prompt_mask, repeat_answer_mask], dim=-1)
         # Get logits of full sequence
+        #print("Memory before logits calculation: ", torch.cuda.mem_get_info()[0] / 1e9)
         full_logits = self.llm_model(
             input_ids=full_tok[:, :-1], # Don't predict next token logits after last token
             attention_mask=full_mask[:, :-1]
         ).logits
+        #print("Memory after logits calculation: ", torch.cuda.mem_get_info()[0] / 1e9)
         vocab_len = full_logits.size(-1)
         # Because logits are for next token prediction, shift full_tok and full_mask right by 1
         full_tok, full_mask = full_tok[:, 1:], full_mask[:, 1:]
@@ -136,8 +138,7 @@ class Llama(BaseLanguageModel):
         #ce_loss = ce_loss.sum(dim=-1) / z
         # Get perplexity and likelihood
         llm_perplexity = -ce_loss.exp() # Take negative because lower ppl is better
-        llm_likelihood = torch.softmax(llm_perplexity * gamma, dim=-1)
-        return llm_likelihood[None, :], llm_perplexity[None, :]
+        return llm_perplexity[None, :]
     
     def tokenize(self, text):
         return len(self.tokenizer.tokenize(text))

@@ -137,14 +137,14 @@ class Evaluator:
                     #     tp_obj[j]['attention'] = attention_tp.tolist()
         return obj_list
 
-    def evaluate(self, valid_data, test_batch_size=20, write_info=False):
+    def evaluate(self, valid_data, test_batch_size=1, valid_text_data=None, write_info=False):
         write_info = True
         self.model.eval()
         self.count = 0
         eps = self.eps
         id2entity = self.id2entity
         eval_loss, eval_acc, eval_max_acc = [], [], []
-        f1s, hits, ems,  precisions, recalls = [], [], [], [], []
+        f1s, hits, ems,  precisions, recalls, corrects = [], [], [], [], [], []
         valid_data.reset_batches(is_sequential=True)
         num_epoch = math.ceil(valid_data.num_data / test_batch_size)
         if write_info and self.file_write is None:
@@ -156,8 +156,10 @@ class Evaluator:
         ignore_prob = (1 - eps) / max_local_entity
         for iteration in tqdm(range(num_epoch)):
             batch = valid_data.get_batch(iteration, test_batch_size, fact_dropout=0.0, test=True)
+            text_batch = self.valid_text_data[iteration]
+            text_batch["cand"] = valid_data.get_candidates(batch)
             with torch.no_grad():
-                loss, extras, pred_dist, tp_list = self.model(batch[:-1])
+                loss, extras, pred_dist, tp_list, correct, recall = self.model(batch[:-1], text_batch)
                 pred = torch.max(pred_dist, dim=1)[1]
             if self.model_name == 'GraftNet':
                 local_entity, query_entities, _, _, query_text, _, \
@@ -224,6 +226,7 @@ class Evaluator:
                 ems.append(em)
                 precisions.append(precision)
                 recalls.append(recall)
+                corrects.append(correct)
         print('evaluation.......')
         print('how many eval samples......', len(f1s))
         # print('avg_f1', np.mean(f1s))
@@ -237,7 +240,7 @@ class Evaluator:
         if write_info:
             self.file_write.close()
             self.file_write = None
-        return np.mean(f1s), np.mean(hits), np.mean(ems)
+        return np.mean(f1s), np.mean(hits), np.mean(ems), np.mean(corrects)
 
 
 

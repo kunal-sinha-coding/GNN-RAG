@@ -11,6 +11,7 @@ warnings.filterwarnings("ignore")
 from modules.question_encoding.tokenizers import LSTMTokenizer#, BERTTokenizer
 from transformers import AutoTokenizer
 import time
+import llm.src.utils.utils as llm_utils
 
 import os
 
@@ -114,6 +115,7 @@ class BasicDataLoader(object):
         self.relation2id = relation2id
         self.entity2id = entity2id
         self.id2entity = {i: entity for entity, i in entity2id.items()}
+        self.entities_names, self.names_entities = llm_utils.get_entities_names()
         self.q_type = config['q_type']
 
         if self.use_inverse_relation:
@@ -533,6 +535,18 @@ class BasicDataLoader(object):
         else:
             self.batches = np.random.permutation(self.num_data)
 
+    def get_candidates(self, batch):
+        cand_ids = batch[0]
+        candidates = []
+        for i, c_ids in enumerate(cand_ids):
+            for c in c_ids:
+                current_cand = ''
+                if c in self.id2entity:
+                    ent = self.id2entity[c]
+                    current_cand = self.entities_names[ent] if ent in self.entities_names else ent
+                candidates.append(current_cand)
+        return np.array(candidates)
+
     def _build_global2local_entity_maps(self):
         """Create a map from global entity id to local entity of each sample"""
         global2local_entity_maps = [None] * self.num_data
@@ -683,7 +697,6 @@ def load_data(config, tokenize):
         "ent_texts": entities_texts
     }
     return dataset
-
 
 if __name__ == "__main__":
     st = time.time()
