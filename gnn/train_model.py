@@ -43,7 +43,7 @@ class Trainer_KBQA(object):
         self.load_data(args, args['lm'])
         self.entities_names, self.names_entities = llm_utils.get_entities_names()
         self.train_text_data = datasets.load_dataset("rmanluo/RoG-cwq", split="train")
-        self.val_text_data = datasets.load_dataset("rmanluo/RoG-cwq", split="validation")
+        self.valid_text_data = datasets.load_dataset("rmanluo/RoG-cwq", split="validation")
         self.test_text_data = datasets.load_dataset("rmanluo/RoG-cwq", split="test")
 
         if 'decay_rate' in args:
@@ -122,7 +122,7 @@ class Trainer_KBQA(object):
             print("Load ckpt from", ckpt_path)
             self.load_ckpt(ckpt_path)
 
-    def evaluate(self, data, test_batch_size=20, write_info=False):
+    def evaluate(self, data, test_batch_size=1, write_info=False):
         return self.evaluator.evaluate(data, test_batch_size, write_info)
 
     def train(self, start_epoch, end_epoch):
@@ -233,7 +233,7 @@ class Trainer_KBQA(object):
         losses = []
         actor_losses = []
         ent_losses = []
-        num_epoch = 2#math.ceil(self.train_data.num_data / self.args['batch_size']) # ToDo: dont hardcode
+        num_epoch = math.ceil(self.train_data.num_data / self.args['batch_size']) # ToDo: dont hardcode
         h1_list_all = []
         f1_list_all = []
         correct_all = []
@@ -241,7 +241,7 @@ class Trainer_KBQA(object):
         for iteration in tqdm(range(num_epoch)):
             batch = self.train_data.get_batch(iteration, self.args['batch_size'], self.args['fact_drop'])
             self.optim_model.zero_grad()
-            text_batch = self.train_text_data[iteration] #Only works for bsz=1
+            text_batch = self.train_text_data[iteration * self.args['batch_size'] : (iteration + 1) * self.args['batch_size']]
             text_batch["cand"] = self.train_data.get_candidates(batch)
             if (len(text_batch["q_entity"]) < 1 or len(text_batch["a_entity"]) < 1 # No question or answer entities
                 or text_batch["q_entity"][0] not in np.array(text_batch["graph"]).flatten() # Question entity not in graph

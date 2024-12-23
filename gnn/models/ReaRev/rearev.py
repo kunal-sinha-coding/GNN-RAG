@@ -193,7 +193,7 @@ class ReaRev(BaseModel):
         prediction = self.llm_model.generate_sentence(input).strip()
         return (prediction == text_batch["answer"][0])
     
-    def forward(self, batch, text_batch=None, training=False, replug=True, top_k=10, debug_ppl=True):
+    def forward(self, batch, text_batch=None, training=False, replug=False, top_k=10, debug_ppl=True):
         """
         Forward function: creates instructions and performs GNN reasoning.
         """

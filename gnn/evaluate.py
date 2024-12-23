@@ -156,7 +156,7 @@ class Evaluator:
         ignore_prob = (1 - eps) / max_local_entity
         for iteration in tqdm(range(num_epoch)):
             batch = valid_data.get_batch(iteration, test_batch_size, fact_dropout=0.0, test=True)
-            text_batch = self.valid_text_data[iteration]
+            text_batch = valid_text_data[iteration]
             text_batch["cand"] = valid_data.get_candidates(batch)
             with torch.no_grad():
                 loss, extras, pred_dist, tp_list, correct, recall = self.model(batch[:-1], text_batch)
