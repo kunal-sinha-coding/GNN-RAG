@@ -78,6 +78,19 @@ class PromptBuilder(object):
                 if len(p) > 0:
                     prediction.append(p[-1][-1])
         return prediction
+
+    # Wrapper function that calls process_input for all elements in the batch
+    def process_input_batch(self, question_dicts, return_list=True):
+        bsz = len(question_dicts["question"])
+        all_input, all_input_list = [], []
+        for i in range(bsz):
+            current_dict = {}
+            for k, v in question_dicts.items():
+                current_dict[k] = v[i]
+            input, input_list = self.process_input(current_dict, return_list)
+            all_input.append(input)
+            all_input_list.append(input_list)
+        return all_input, all_input_list
     
     def process_input(self, question_dict, return_list=True):
         '''
@@ -113,12 +126,11 @@ class PromptBuilder(object):
                 skip_ents = []
                 graph = graph_utils.build_graph(question_dict['graph'], skip_ents, self.encrypt)
             lists_of_paths2 = []
-            #print(question_dict['cand'])
             reasoning_paths = graph_utils.get_truth_paths(question_dict['q_entity'], question_dict['cand'], graph)
             for p in reasoning_paths:
                 #if llm_utils.path_to_string(p) not in lists_of_paths: 
                 # Default to candidate only if empty reasoning path
-                lists_of_paths.append(llm_utils.path_to_string(p) )
+                lists_of_paths.append(llm_utils.path_to_string(p))
             
             for p in reasoning_paths:
                 #if llm_utils.path_to_string(p) not in lists_of_paths2:
@@ -161,10 +173,7 @@ class PromptBuilder(object):
                     for path in lists_of_paths
                 ]
                 input_list = [
-                    (
-                        self.prompt_template.format(instruction=instruction, input=p_context) 
-                        #+ self.QUESTION.format(question=question)
-                    )
+                    self.prompt_template.format(instruction=instruction, input=p_context)
                     for p_context in path_contexts
                 ]
         input = self.prompt_template.format(instruction = instruction, input = input)

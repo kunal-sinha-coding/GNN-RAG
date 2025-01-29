@@ -45,22 +45,23 @@ def bfs_with_rule(graph, start_node, target_rule, max_p = 10):
     
     return result_paths
 
+def get_shortest_path(q_entity: list, t: str, graph: nx.Graph) -> list:
+    for h in q_entity:
+        try:
+            path = nx.shortest_path(graph, h, t)
+            return path
+        except:
+            continue
+    #If no path found, return a dummy path
+    h = q_entity[0] if len(q_entity) > 0 else t
+    return [h, t]
+
 def get_truth_paths(q_entity: list, a_entity: list, graph: nx.Graph) -> list:
     '''
     Get shortest paths connecting question and answer entities.
     '''
     # Select paths
-    paths = []
-    if len(q_entity) == 0 or len(a_entity) == 0:
-        return paths
-    h = q_entity[0]
-    if h in graph:
-        for t in a_entity:
-            try:
-                p = next(nx.all_shortest_paths(graph, h, t))
-            except:
-                p = []
-            paths.append(p)
+    paths = [get_shortest_path(q_entity, t, graph) for t in a_entity]
     #for h in q_entity:
         #if h not in graph:
             #continue
@@ -76,12 +77,15 @@ def get_truth_paths(q_entity: list, a_entity: list, graph: nx.Graph) -> list:
                 #pass
     # Add relation to paths
     result_paths = []
-    for p in paths:
+    for p_idx, p in enumerate(paths):
         tmp = []
         for i in range(len(p)-1):
             u = p[i]
             v = p[i+1]
-            tmp.append((u, graph[u][v]['relation'], v))
+            relation = "related" #Default dummy relation for dummy path
+            if u in graph and v in graph[u] and 'relation' in graph[u][v]:
+                relation = graph[u][v]['relation']
+            tmp.append((u, relation, v))
         result_paths.append(tmp)
     return result_paths
     

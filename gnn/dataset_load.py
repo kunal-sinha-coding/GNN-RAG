@@ -539,12 +539,14 @@ class BasicDataLoader(object):
         cand_ids = batch[0]
         candidates = []
         for i, c_ids in enumerate(cand_ids):
+            current_cands = []
             for c in c_ids:
-                current_cand = ''
+                current = ''
                 if c in self.id2entity:
                     ent = self.id2entity[c]
-                    current_cand = self.entities_names[ent] if ent in self.entities_names else ent
-                candidates.append(current_cand)
+                    current = self.entities_names[ent] if ent in self.entities_names else ent
+                current_cands.append(current)
+            candidates.append(current_cands)
         return np.array(candidates)
 
     def _build_global2local_entity_maps(self):

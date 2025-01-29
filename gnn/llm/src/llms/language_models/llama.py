@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from .base_language_model import BaseLanguageModel
 from transformers import LlamaTokenizer, LlamaForCausalLM
 from functools import reduce
+import numpy as np
 
 IGNORE_INDEX = -100
 
@@ -38,8 +39,8 @@ class Llama(BaseLanguageModel):
         #)
         #return model
 
-    def calculate_perplexity(self, inputs, answer):
-        k = len(inputs)
+    def calculate_perplexity(self, inputs, answers):
+        bsz, k = np.array(inputs).shape
         #self.tokenizer.padding_side = "left" #Pad prompt on the left side
         #prompt_encoding = self.tokenizer.batch_encode_plus(
         #    inputs, return_tensors="pt", add_special_tokens=True, padding=True
@@ -54,7 +55,11 @@ class Llama(BaseLanguageModel):
         #full_tok = torch.cat([reader_tok, answer_tok], dim=-1)
         #full_mask = torch.cat([reader_mask, answer_mask], dim=-1)
         # Encode the full inputs
-        full_inputs = [f"{inp}{answer[0]}" for inp in inputs] # Only use first answer; \n is needed for low ppl
+        full_inputs = []
+        for i in range(bsz):
+            for j in range(k):
+                full_inputs.append(f"{inputs[i][j]}{answers[i][0]}")
+        #Only use first answer; \n is needed for low ppl
         full_encoding = self.tokenizer.batch_encode_plus(
             full_inputs, return_tensors="pt", padding=True
         )
@@ -74,17 +79,15 @@ class Llama(BaseLanguageModel):
         #full_tok = torch.cat([prompt_tok, repeat_answer_tok], dim=-1)
         #full_mask = torch.cat([prompt_mask, repeat_answer_mask], dim=-1)
         # Get logits of full sequence
-        #print("Memory before logits calculation: ", torch.cuda.mem_get_info()[0] / 1e9)
         full_logits = self.llm_model(
             input_ids=full_tok[:, :-1], # Don't predict next token logits after last token
             attention_mask=full_mask[:, :-1]
         ).logits
-        #print("Memory after logits calculation: ", torch.cuda.mem_get_info()[0] / 1e9)
         vocab_len = full_logits.size(-1)
         # Because logits are for next token prediction, shift full_tok and full_mask right by 1
         full_tok, full_mask = full_tok[:, 1:], full_mask[:, 1:]
-        seq_len = full_tok.size(-1)
-        # Flatten the inputs to F.cross_entropy so first dim is k * answer_len
+        num_inputs, seq_len = full_tok.shape
+        # Flatten the inputs to F.cross_entropy so first dim is num_inputs * answer_len
         full_logits_flat = full_logits.reshape(-1, vocab_len)
         full_labels = full_tok.masked_fill(full_mask == 0, IGNORE_INDEX)
         full_labels_flat = full_labels.reshape(-1)
@@ -107,14 +110,12 @@ class Llama(BaseLanguageModel):
             ignore_index=IGNORE_INDEX,
             reduction="none"
         ).reshape(full_labels.shape)
-        #question_ids = [self.tokenizer.encode([tok])[-1] for tok in ["?", "\"?"]]
-        #question_indices = reduce(torch.logical_or, [full_tok == q_id for q_id in question_ids]).long().argmax(dim=-1) # Get indices of ? tokens
         question_id = self.tokenizer.encode(["INST"])[-1]
         # Get last index of question_id by reversing full_tok and doing argmax
         # We don't do seq_len-1 because we'd have to do +1 later to mask ] too
         question_indices = seq_len - (full_tok.flip(dims=[1]) == question_id).long().argmax(dim=-1)
         question_indices = question_indices[:, None].repeat(1, seq_len) #Reshape to same size as full_tok
-        question_mask = torch.arange(seq_len)[None, :].repeat(k, 1).to(self.device) <= question_indices + 1 #Mask question tokens and the one spacing token afterwards
+        question_mask = torch.arange(seq_len)[None, :].repeat(num_inputs, 1).to(self.device) <= question_indices + 1 #Mask question tokens and the one spacing token afterwards
         ce_loss[question_mask] = 0 #Ignore question tokens
         ce_loss[full_tok == self.tokenizer.pad_token_id] = 0 #Ignore pad tokens
         full_labels[question_mask] = IGNORE_INDEX
@@ -138,7 +139,7 @@ class Llama(BaseLanguageModel):
         #ce_loss = ce_loss.sum(dim=-1) / z
         # Get perplexity and likelihood
         llm_perplexity = -ce_loss.exp() # Take negative because lower ppl is better
-        return llm_perplexity[None, :]
+        return llm_perplexity.reshape((bsz, k))
     
     def tokenize(self, text):
         return len(self.tokenizer.tokenize(text))

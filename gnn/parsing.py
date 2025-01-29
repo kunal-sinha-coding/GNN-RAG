@@ -14,6 +14,8 @@ def add_shared_args(parser):
     parser.add_argument('--name', default='webqsp', type=str)
     parser.add_argument('--data_folder', default='data/webqsp/', type=str)
     parser.add_argument('--max_train', default=200000, type=int)
+    parser.add_argument('--train_data_start', default=0.0, type=float)
+    parser.add_argument('--train_data_end', default=1.0, type=float)
 
     # embeddings
     parser.add_argument('--word2id', default='vocab.txt', type=str)

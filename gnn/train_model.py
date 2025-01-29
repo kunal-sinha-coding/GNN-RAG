@@ -26,7 +26,9 @@ import datasets
 class Trainer_KBQA(object):
     def __init__(self, args, model_name, logger=None):
         #print('Trainer here')
+        print("Before wandb init")
         wandb.init(project="gnn-rag")
+        print("After wandb init")
         self.args = args
         self.logger = logger
         self.best_dev_performance = 0.0
@@ -45,6 +47,7 @@ class Trainer_KBQA(object):
         self.train_text_data = datasets.load_dataset("rmanluo/RoG-cwq", split="train")
         self.valid_text_data = datasets.load_dataset("rmanluo/RoG-cwq", split="validation")
         self.test_text_data = datasets.load_dataset("rmanluo/RoG-cwq", split="test")
+        self.train_data_start, self.train_data_end = args["train_data_start"], args["train_data_end"]
 
         if 'decay_rate' in args:
             self.decay_rate = args['decay_rate']
@@ -122,8 +125,8 @@ class Trainer_KBQA(object):
             print("Load ckpt from", ckpt_path)
             self.load_ckpt(ckpt_path)
 
-    def evaluate(self, data, test_batch_size=1, write_info=False):
-        return self.evaluator.evaluate(data, test_batch_size, write_info)
+    def evaluate(self, data, test_batch_size=1, valid_text_data=None, write_info=False):
+        return self.evaluator.evaluate(data, test_batch_size, valid_text_data, write_info)
 
     def train(self, start_epoch, end_epoch):
         # self.load_pretrain()
@@ -233,27 +236,33 @@ class Trainer_KBQA(object):
         losses = []
         actor_losses = []
         ent_losses = []
-        num_epoch = math.ceil(self.train_data.num_data / self.args['batch_size']) # ToDo: dont hardcode
+        num_epoch = self.train_data.num_data // self.args['batch_size']
         h1_list_all = []
         f1_list_all = []
         correct_all = []
         recall_all = []
         for iteration in tqdm(range(num_epoch)):
+            if (iteration < self.train_data_start * num_epoch 
+                or iteration > self.train_data_end * num_epoch):
+                continue
             batch = self.train_data.get_batch(iteration, self.args['batch_size'], self.args['fact_drop'])
             self.optim_model.zero_grad()
-            text_batch = self.train_text_data[iteration * self.args['batch_size'] : (iteration + 1) * self.args['batch_size']]
+            start_idx = iteration * self.args['batch_size']
+            end_idx = (iteration + 1) * self.args['batch_size']
+            text_batch = self.train_text_data[start_idx : end_idx]
             text_batch["cand"] = self.train_data.get_candidates(batch)
-            if (len(text_batch["q_entity"]) < 1 or len(text_batch["a_entity"]) < 1 # No question or answer entities
-                or text_batch["q_entity"][0] not in np.array(text_batch["graph"]).flatten() # Question entity not in graph
-                or text_batch["a_entity"][0] not in np.array(text_batch["graph"]).flatten() # Answer entity not in graph
-                or text_batch["a_entity"][0] == text_batch["q_entity"][0]): # Question and answer entity are the same
-                continue
-            loss, _, _, tp_list, correct, recall = self.model(batch, text_batch, training=True)
+            #if (len(text_batch["q_entity"]) < 1 or len(text_batch["a_entity"]) < 1 # No question or answer entities
+                #or text_batch["q_entity"][0] not in np.array(text_batch["graph"]).flatten() # Question entity not in graph
+                #or text_batch["a_entity"][0] not in np.array(text_batch["graph"]).flatten() # Answer entity not in graph
+                #or text_batch["a_entity"][0] == text_batch["q_entity"][0]): # Question and answer entity are the same
+                #continue
+            save_ppl_files = [os.path.join("perplexity_scores", f"{idx}-{idx+1}.pt") for idx in range(start_idx, end_idx)]
+            loss, _, _, tp_list, correct, recall = self.model(batch, text_batch, training=True, save_ppl_files=save_ppl_files)
             # if tp_list is not None:
             h1_list, f1_list = tp_list
             h1_list_all.extend(h1_list)
             f1_list_all.extend(f1_list)
-            correct_all.append(correct)
+            correct_all.extend(correct)
             recall_all.append(recall)
             loss.backward()
             torch.nn.utils.clip_grad_norm_([param for name, param in self.model.named_parameters()],
