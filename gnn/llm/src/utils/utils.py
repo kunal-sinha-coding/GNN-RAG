@@ -45,7 +45,9 @@ def path_to_string(path: list) -> str:
             result += f"{h} -> {r} -> {t}"
         else:
             _, r, t = p
-            result += f" -> {r} -> {t}" 
+            result += f" -> {r} -> {t}"
+    #if len(path) > 0 and len(path[0]) > 0:
+        #result = path[-1][-1] #TEMPORARILY ignore path, just do final tail entity
     return result.strip()
 
 class InstructFormater(object):

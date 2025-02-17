@@ -137,7 +137,7 @@ class Evaluator:
                     #     tp_obj[j]['attention'] = attention_tp.tolist()
         return obj_list
 
-    def evaluate(self, valid_data, test_batch_size=1, valid_text_data=None, write_info=False):
+    def evaluate(self, valid_data, test_batch_size=8, valid_text_data=None, write_info=False):
         write_info = True
         self.model.eval()
         self.count = 0
@@ -156,7 +156,7 @@ class Evaluator:
         ignore_prob = (1 - eps) / max_local_entity
         for iteration in tqdm(range(num_epoch)):
             batch = valid_data.get_batch(iteration, test_batch_size, fact_dropout=0.0, test=True)
-            text_batch = valid_text_data[iteration]
+            text_batch = valid_text_data[iteration * test_batch_size : (iteration + 1) * test_batch_size]
             text_batch["cand"] = valid_data.get_candidates(batch)
             with torch.no_grad():
                 loss, extras, pred_dist, tp_list, correct, recall = self.model(batch[:-1], text_batch)
@@ -226,7 +226,7 @@ class Evaluator:
                 ems.append(em)
                 precisions.append(precision)
                 recalls.append(recall)
-                corrects.append(correct)
+                corrects.extend(correct)
         print('evaluation.......')
         print('how many eval samples......', len(f1s))
         # print('avg_f1', np.mean(f1s))

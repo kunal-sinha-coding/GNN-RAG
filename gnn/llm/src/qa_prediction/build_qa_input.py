@@ -80,19 +80,19 @@ class PromptBuilder(object):
         return prediction
 
     # Wrapper function that calls process_input for all elements in the batch
-    def process_input_batch(self, question_dicts, return_list=True):
+    def process_input_batch(self, question_dicts, all_input=False, return_list=True):
         bsz = len(question_dicts["question"])
         all_input, all_input_list = [], []
         for i in range(bsz):
             current_dict = {}
             for k, v in question_dicts.items():
                 current_dict[k] = v[i]
-            input, input_list = self.process_input(current_dict, return_list)
+            input, input_list = self.process_input(current_dict, all_input, return_list)
             all_input.append(input)
             all_input_list.append(input_list)
         return all_input, all_input_list
     
-    def process_input(self, question_dict, return_list=True):
+    def process_input(self, question_dict, all_input, return_list=True):
         '''
         Take question as input and return the input with prompt
         '''
@@ -126,7 +126,7 @@ class PromptBuilder(object):
                 skip_ents = []
                 graph = graph_utils.build_graph(question_dict['graph'], skip_ents, self.encrypt)
             lists_of_paths2 = []
-            reasoning_paths = graph_utils.get_truth_paths(question_dict['q_entity'], question_dict['cand'], graph)
+            reasoning_paths = graph_utils.get_truth_paths(question_dict['q_entity'], question_dict['cand'], graph, all_input)
             for p in reasoning_paths:
                 #if llm_utils.path_to_string(p) not in lists_of_paths: 
                 # Default to candidate only if empty reasoning path

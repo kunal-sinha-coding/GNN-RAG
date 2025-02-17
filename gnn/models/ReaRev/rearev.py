@@ -190,9 +190,10 @@ class ReaRev(BaseModel):
         cur_loss = torch.sum(tp_loss) / curr_dist.size(0)
         return cur_loss
         
-    def evaluate_llm(self, text_batch, candidates, top_cands):
-        text_batch["cand"] = top_cands
-        all_input, _ = self.input_builder.process_input_batch(text_batch)
+    def evaluate_llm(self, text_batch):
+        all_input, _ = self.input_builder.process_input_batch(text_batch, all_input=True)
+        print(sum(["m." in cands for cands in text_batch["cand"]])) # TEMPORARY check how many are unconverted
+        import pdb; pdb.set_trace()
         correct = [False for inp in all_input]
         for i in range(len(correct)):
             prediction = self.llm_model.generate_sentence(all_input[i]).strip()
@@ -364,13 +365,14 @@ class ReaRev(BaseModel):
 
         pred_dist = self.dist_history[-1]
         pred = torch.max(pred_dist, dim=1)[1]
+        text_batch["cand"] = top_cands
         correct = [False for i in range(bsz)] #Ignore for train for sake of timing
         if training:
             h1, f1 = self.get_eval_metric(pred_dist, answer_dist)
             tp_list = [h1.tolist(), f1.tolist()]
         else:
             tp_list = None
-            correct = self.evaluate_llm(text_batch, candidates, top_cands)
+            correct = self.evaluate_llm(text_batch)
         return loss, pred, pred_dist, tp_list, correct, recall
 
     

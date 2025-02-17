@@ -45,23 +45,35 @@ def bfs_with_rule(graph, start_node, target_rule, max_p = 10):
     
     return result_paths
 
-def get_shortest_path(q_entity: list, t: str, graph: nx.Graph) -> list:
+def get_shortest_path(q_entity: list, t: str, graph: nx.Graph, all_paths: bool) -> list:
+    paths = []
     for h in q_entity:
-        try:
-            path = nx.shortest_path(graph, h, t)
-            return path
-        except:
-            continue
+        if all_paths:
+            try:
+                for p in nx.all_shortest_paths(graph, h, t):
+                    paths.append(p)
+            except:
+                continue
+        else:
+            try:
+                path = nx.shortest_path(graph, h, t)
+                return path
+            except:
+                continue
     #If no path found, return a dummy path
-    h = q_entity[0] if len(q_entity) > 0 else t
-    return [h, t]
+    if len(paths) == 0:
+        h = q_entity[0] if len(q_entity) > 0 else t
+        paths = [[h, t]]
+    return paths
 
-def get_truth_paths(q_entity: list, a_entity: list, graph: nx.Graph) -> list:
+def get_truth_paths(q_entity: list, a_entity: list, graph: nx.Graph, all_paths: bool) -> list:
     '''
     Get shortest paths connecting question and answer entities.
     '''
     # Select paths
-    paths = [get_shortest_path(q_entity, t, graph) for t in a_entity]
+    paths = []
+    for t in a_entity:
+        paths += get_shortest_path(q_entity, t, graph, all_paths)
     #for h in q_entity:
         #if h not in graph:
             #continue
