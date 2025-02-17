@@ -46,6 +46,7 @@ class BasicDataLoader(object):
         with open(data_file) as f_in:
             for line in tqdm(f_in):
                 if index == config['max_train'] and data_type == "train": break  #break if we reach max_question_size
+                import pdb; pdb.set_trace()
                 line = json.loads(line)
                 
                 if len(line['entities']) == 0:

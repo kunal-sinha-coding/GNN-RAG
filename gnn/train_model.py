@@ -44,9 +44,10 @@ class Trainer_KBQA(object):
         self.reset_time = 0
         self.load_data(args, args['lm'])
         self.entities_names, self.names_entities = llm_utils.get_entities_names()
-        self.train_text_data = datasets.load_dataset("rmanluo/RoG-cwq", split="train")
-        self.valid_text_data = datasets.load_dataset("rmanluo/RoG-cwq", split="validation")
-        self.test_text_data = datasets.load_dataset("rmanluo/RoG-cwq", split="test")
+        self.text_data_name = "kunal-sinha-coding/graphrag-random-graph" #"rmanluo/RoG-cwq"
+        self.train_text_data = datasets.load_dataset(self.text_data_name, split="train")
+        self.valid_text_data = datasets.load_dataset(self.text_data_name, split="validation")
+        self.test_text_data = datasets.load_dataset(self.text_data_name, split="test")
         self.train_data_start, self.train_data_end = args["train_data_start"], args["train_data_end"]
 
         if 'decay_rate' in args:
