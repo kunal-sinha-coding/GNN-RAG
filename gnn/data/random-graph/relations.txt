@@ -1,2 +1,2 @@
-relates_to
-located_in
+toy.relates_to
+toy.located_in

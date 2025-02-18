@@ -192,8 +192,6 @@ class ReaRev(BaseModel):
         
     def evaluate_llm(self, text_batch):
         all_input, _ = self.input_builder.process_input_batch(text_batch, all_input=True)
-        print(sum(["m." in cands for cands in text_batch["cand"]])) # TEMPORARY check how many are unconverted
-        import pdb; pdb.set_trace()
         correct = [False for inp in all_input]
         for i in range(len(correct)):
             prediction = self.llm_model.generate_sentence(all_input[i]).strip()

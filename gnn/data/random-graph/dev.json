@@ -1,0 +1,2 @@
+{"id": "graphrag-random-graph-toy001", "answers": [{"kb_id": "Joe", "text": "Joe"}], "question": "Who does Bob report to?", "entities": [0, 1], "subgraph": { "tuples": [ [0, 0, 1], [0, 1, 2] ], "entities": [0, 1, 2] }}
+{ "id": "graphrag-random-graph-toy002",	"answers": [{"kb_id": "San Francisco", "text": "San Francisco"}], "question": "Where does Bob work?", "entities": [0, 2],"subgraph": {"tuples": [ [0, 0, 1], [0, 1, 2] ],"entities": [0, 1, 2]	}}
