@@ -1,0 +1,15 @@
+product.used_for_func
+product.used_for_eve
+product.used_for_aud
+product.capable_of
+product.used_to
+product.used_as
+product.is_a
+product.used_on
+product.used_in_loc
+product.used_in_body
+product.used_with
+product.used_by
+product.xinterested_in
+product.xis_a
+product.xwant
