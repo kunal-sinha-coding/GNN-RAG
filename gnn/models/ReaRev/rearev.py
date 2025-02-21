@@ -273,7 +273,7 @@ class ReaRev(BaseModel):
         bsz, num_cands = pred_dist.shape
         sorted_indices = pred_dist.sort(dim=-1).indices
         correct_idx = answer_dist.argmax(dim=-1)
-        text_batch["cand"][np.arange(bsz), correct_idx.cpu().numpy()] = [entity[0] for entity in text_batch["a_entity"]]
+        #text_batch["cand"][np.arange(bsz), correct_idx.cpu().numpy()] = [entity[0] for entity in text_batch["a_entity"]]
         candidates = text_batch["cand"]
         top_indices = sorted_indices[:, -top_k:]
         top_cands = candidates[np.arange(bsz)[:, None], top_indices.cpu().numpy()]
