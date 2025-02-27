@@ -48,7 +48,7 @@ class BasicDataLoader(object):
                 if index == config['max_train'] and data_type == "train": break  #break if we reach max_question_size
                 line = json.loads(line)
                 
-                if len(line['entities']) == 0:
+                if 'entities' in line and len(line['entities']) == 0:
                     skip_index.add(index)
                     continue
                 self.data.append(line)
@@ -558,7 +558,7 @@ class BasicDataLoader(object):
             g2l = dict()
             if 'entities_cid' in sample:
                 self._add_entity_to_map(self.entity2id, sample['entities_cid'], g2l)
-            else:
+            elif 'entites' in sample: # We don't have this field for our synthetic data
                 self._add_entity_to_map(self.entity2id, sample['entities'], g2l)
             #self._add_entity_to_map(self.entity2id, sample['entities'], g2l)
             # construct a map from global entity id to local entity id
