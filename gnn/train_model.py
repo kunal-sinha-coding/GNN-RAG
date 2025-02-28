@@ -40,6 +40,8 @@ class Trainer_KBQA(object):
         self.warmup_epoch = args['warmup_epoch']
         self.learning_rate = self.args['lr']
         self.test_batch_size = args['test_batch_size']
+        self.data_folder = args['data_folder']
+        self.data_name = os.path.split(self.data_folder)[-1]
         self.device = torch.device('cuda' if args['use_cuda'] else 'cpu')
         self.reset_time = 0
         self.load_data(args, args['lm'])
@@ -92,7 +94,7 @@ class Trainer_KBQA(object):
                 if v is None:
                     setattr(self, k, None)
                 else:
-                    setattr(self, k, args['data_folder'] + v)
+                    setattr(self, k, self.data_folder + v)
 
     def optim_def(self):
         
@@ -246,19 +248,15 @@ class Trainer_KBQA(object):
             if (iteration < self.train_data_start * num_epoch 
                 or iteration > self.train_data_end * num_epoch):
                 continue
-            batch = self.train_data.get_batch(iteration, self.args['batch_size'], self.args['fact_drop'])
             self.optim_model.zero_grad()
-            start_idx = iteration * self.args['batch_size']
-            end_idx = (iteration + 1) * self.args['batch_size']
-            text_batch = self.train_text_data[start_idx : end_idx]
-            text_batch["cand"] = self.train_data.get_candidates(batch)
-            #if (len(text_batch["q_entity"]) < 1 or len(text_batch["a_entity"]) < 1 # No question or answer entities
-                #or text_batch["q_entity"][0] not in np.array(text_batch["graph"]).flatten() # Question entity not in graph
-                #or text_batch["a_entity"][0] not in np.array(text_batch["graph"]).flatten() # Answer entity not in graph
-                #or text_batch["a_entity"][0] == text_batch["q_entity"][0]): # Question and answer entity are the same
-                #continue
-            save_ppl_files = [os.path.join("perplexity_scores", f"{idx}-{idx+1}.pt") for idx in range(start_idx, end_idx)]
-            loss, _, _, tp_list, correct, recall = self.model(batch, text_batch, training=True, save_ppl_files=save_ppl_files)
+            batch = self.train_data.get_batch(iteration, self.args['batch_size'], self.args['fact_drop'])
+            candidates = self.train_data.get_candidates(batch)
+            save_ppl_files = [
+                os.path.join("perplexity_scores", self.data_name, f"{idx}-{idx+1}.pt") 
+                for idx in range(start_idx, end_idx)
+            ]
+            import pdb; pdb.set_trace()
+            loss, _, _, tp_list, correct, recall = self.model(batch, candidates training=True, save_ppl_files=save_ppl_files)
             # if tp_list is not None:
             h1_list, f1_list = tp_list
             h1_list_all.extend(h1_list)
