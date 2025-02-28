@@ -39,17 +39,15 @@ class Trainer_KBQA(object):
         self.eps = args['eps']
         self.warmup_epoch = args['warmup_epoch']
         self.learning_rate = self.args['lr']
+        self.bsz = self.args['batch_size']
         self.test_batch_size = args['test_batch_size']
         self.data_folder = args['data_folder']
         self.data_name = os.path.split(self.data_folder)[-1]
+        self.fact_drop = args['fact_drop']
         self.device = torch.device('cuda' if args['use_cuda'] else 'cpu')
         self.reset_time = 0
         self.load_data(args, args['lm'])
         self.entities_names, self.names_entities = llm_utils.get_entities_names()
-        self.text_data_name = "kunal-sinha-coding/graphrag-random-graph" #"rmanluo/RoG-cwq"
-        self.train_text_data = datasets.load_dataset(self.text_data_name, split="train")
-        self.valid_text_data = datasets.load_dataset(self.text_data_name, split="validation")
-        self.test_text_data = datasets.load_dataset(self.text_data_name, split="test")
         self.train_data_start, self.train_data_end = args["train_data_start"], args["train_data_end"]
 
         if 'decay_rate' in args:
@@ -249,14 +247,13 @@ class Trainer_KBQA(object):
                 or iteration > self.train_data_end * num_epoch):
                 continue
             self.optim_model.zero_grad()
-            batch = self.train_data.get_batch(iteration, self.args['batch_size'], self.args['fact_drop'])
-            candidates = self.train_data.get_candidates(batch)
-            save_ppl_files = [
-                os.path.join("perplexity_scores", self.data_name, f"{idx}-{idx+1}.pt") 
-                for idx in range(start_idx, end_idx)
-            ]
-            import pdb; pdb.set_trace()
-            loss, _, _, tp_list, correct, recall = self.model(batch, candidates training=True, save_ppl_files=save_ppl_files)
+            batch = self.train_data.get_batch(iteration, self.bsz, self.fact_drop)
+            start_idx, end_idx = iteration * self.bsz, (iteration + 1) * self.bsz
+            question_dict = self.train_data.get_question_dict(batch, iteration, self.bsz)
+            save_ppl_files = []
+            for idx in range(start_idx, end_idx):
+                save_ppl_files[idx] = os.path.join("perplexity_scores", self.data_name, f"{idx}-{idx+1}.pt")
+            loss, _, _, tp_list, correct, recall = self.model(batch, question_dict, training=True, save_ppl_files=save_ppl_files)
             # if tp_list is not None:
             h1_list, f1_list = tp_list
             h1_list_all.extend(h1_list)

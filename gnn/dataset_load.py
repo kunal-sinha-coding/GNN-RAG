@@ -227,7 +227,7 @@ class BasicDataLoader(object):
             tp_set = set()
             seed_list = []
             key_ent = 'entities_cid' if 'entities_cid' in sample else 'entities'
-            for j, entity in enumerate(sample[key_ent]):
+            for j, entity in enumerate(sample.get(key_ent, [])):
                 # if entity['text'] not in self.entity2id:
                 #     continue
                 try:
@@ -323,7 +323,7 @@ class BasicDataLoader(object):
                     if answer_ent in g2l:
                         self.answer_dists[next_id, g2l[answer_ent]] = 1.0
             else:
-                for answer in sample['answers']:
+                for answer in sample.get('a_entity', []):
                     keyword = 'text' if type(answer['kb_id']) == int else 'kb_id'
                     answer_ent = self.entity2id[answer[keyword]]
                     answer_list.append(answer_ent)
@@ -548,6 +548,18 @@ class BasicDataLoader(object):
                 current_cands.append(current)
             candidates.append(current_cands)
         return np.array(candidates)
+
+    def get_question_dict(self, batch, iteration, bsz):
+        start_idx, end_idx = iteration * bsz, (iteration + 1) * bsz
+        data = self.data[start_idx : end_idx]
+        question_dict = {}
+        for q_dict in data:
+            for k, v in q_dict.items():
+                if k not in question_dict:
+                    question_dict[k] = []
+                question_dict[k].append(v)
+        question_dict["cand"] = self.get_candidates(batch)
+        return question_dict
 
     def _build_global2local_entity_maps(self):
         """Create a map from global entity id to local entity of each sample"""
