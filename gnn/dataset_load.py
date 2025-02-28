@@ -659,10 +659,19 @@ class SingleDataLoader(BasicDataLoader):
 
 def load_dict(filename):
     word2id = dict()
-    with open(filename, encoding='utf-8') as f_in:
-        for line in f_in:
-            word = line.strip()
-            word2id[word] = len(word2id)
+    if os.path.isfile(filename):
+        with open(filename, encoding='utf-8') as f_in:
+            for line in f_in:
+                word = line.strip()
+                word2id[word] = len(word2id)
+    else:
+        idx = 0
+        for sample in self.data:
+            question = sample['question']
+            for word in question.split():
+                if word.lower() not in word2id:
+                    word2id[word.lower()] = idx
+                    idx += 1
     return word2id
 
 def load_dict_int(filename):
