@@ -415,6 +415,7 @@ class BasicDataLoader(object):
             self.rel_texts = np.full((self.num_kb_relation + 1, self.max_rel_words), pad_val, dtype=int)
             self.rel_texts_inv = np.full((self.num_kb_relation + 1, self.max_rel_words), pad_val, dtype=int)
             
+            import pdb; pdb.set_trace()
             for rel_id,words in enumerate(rel_words):
 
                 tokens =  tokenizer.encode_plus(text=' '.join(words), max_length=self.max_rel_words, \
@@ -665,13 +666,15 @@ def load_dict(filename):
                 word = line.strip()
                 word2id[word] = len(word2id)
     else:
-        idx = 0
-        for sample in self.data:
-            question = sample['question']
-            for word in question.split():
-                if word.lower() not in word2id:
-                    word2id[word.lower()] = idx
-                    idx += 1
+        idx = 0 #Hardcode for now - redo later
+        for filename in ["data/finkg/train.json", "data/finkg/dev.json", "data/finkg/test.json"]:
+            with open(filename, 'r', encoding='utf-8') as f_in:
+                for line in f_in:
+                    sample = json.loads(line.strip())
+                    for word in sample['question'].split():
+                        if word.lower() not in word2id:
+                            word2id[word.lower()] = idx
+                            idx += 1
     return word2id
 
 def load_dict_int(filename):
