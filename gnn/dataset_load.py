@@ -415,7 +415,6 @@ class BasicDataLoader(object):
             self.rel_texts = np.full((self.num_kb_relation + 1, self.max_rel_words), pad_val, dtype=int)
             self.rel_texts_inv = np.full((self.num_kb_relation + 1, self.max_rel_words), pad_val, dtype=int)
             
-            import pdb; pdb.set_trace()
             for rel_id,words in enumerate(rel_words):
 
                 tokens =  tokenizer.encode_plus(text=' '.join(words), max_length=self.max_rel_words, \
@@ -550,9 +549,8 @@ class BasicDataLoader(object):
             candidates.append(current_cands)
         return np.array(candidates)
 
-    def get_question_dict(self, batch, iteration, bsz):
-        start_idx, end_idx = iteration * bsz, (iteration + 1) * bsz
-        data = self.data[start_idx : end_idx]
+    def get_question_dict(self, batch, start, end):
+        data = self.data[start : end]
         question_dict = {}
         for q_dict in data:
             for k, v in q_dict.items():
@@ -625,9 +623,7 @@ class SingleDataLoader(BasicDataLoader):
     def __init__(self, config, word2id, relation2id, entity2id, tokenize, data_type="train"):
         super(SingleDataLoader, self).__init__(config, word2id, relation2id, entity2id, tokenize, data_type)
         
-    def get_batch(self, iteration, batch_size, fact_dropout, q_type=None, test=False):
-        start = batch_size * iteration
-        end = min(batch_size * (iteration + 1), self.num_data)
+    def get_batch(self, start, end, fact_dropout, q_type=None, test=False):
         sample_ids = self.batches[start: end]
         self.sample_ids = sample_ids
         # true_batch_id, sample_ids, seed_dist = self.deal_multi_seed(ori_sample_ids)
@@ -671,9 +667,9 @@ def load_dict(filename):
             with open(filename, 'r', encoding='utf-8') as f_in:
                 for line in f_in:
                     sample = json.loads(line.strip())
-                    for word in sample['question'].split():
-                        if word.lower() not in word2id:
-                            word2id[word.lower()] = idx
+                    for word in re.split(r"[ .,?!]", sample['question'].lower()):
+                        if word not in word2id:
+                            word2id[word] = idx
                             idx += 1
     return word2id
 

@@ -247,12 +247,12 @@ class Trainer_KBQA(object):
                 or iteration > self.train_data_end * num_epoch):
                 continue
             self.optim_model.zero_grad()
-            batch = self.train_data.get_batch(iteration, self.bsz, self.fact_drop)
-            start_idx, end_idx = iteration * self.bsz, (iteration + 1) * self.bsz
-            question_dict = self.train_data.get_question_dict(batch, iteration, self.bsz)
+            start, end = iteration * self.bsz, min((iteration + 1) * self.bsz, self.train_data.num_data) 
+            batch = self.train_data.get_batch(start, end, self.fact_drop)
+            question_dict = self.train_data.get_question_dict(batch, start, end)
             save_ppl_files = []
-            for idx in range(start_idx, end_idx):
-                save_ppl_files[idx] = os.path.join("perplexity_scores", self.data_name, f"{idx}-{idx+1}.pt")
+            for idx in range(start, end):
+                save_ppl_files.append(os.path.join("perplexity_scores", self.data_name, f"{idx}-{idx+1}.pt"))
             loss, _, _, tp_list, correct, recall = self.model(batch, question_dict, training=True, save_ppl_files=save_ppl_files)
             # if tp_list is not None:
             h1_list, f1_list = tp_list
