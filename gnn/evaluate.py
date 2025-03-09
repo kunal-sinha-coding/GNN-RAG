@@ -158,8 +158,9 @@ class Evaluator:
             start = test_batch_size * iteration
             end = min(test_batch_size * (iteration + 1), valid_data.num_data)
             batch = valid_data.get_batch(start, end, fact_dropout=0.0, test=True)
+            question_dict = valid_data.get_question_dict(batch, start, end)
             with torch.no_grad():
-                loss, extras, pred_dist, tp_list, correct, recall = self.model(batch[:-1])
+                loss, extras, pred_dist, tp_list, correct, recall = self.model(batch[:-1], question_dict)
                 pred = torch.max(pred_dist, dim=1)[1]
             if self.model_name == 'GraftNet':
                 local_entity, query_entities, _, _, query_text, _, \

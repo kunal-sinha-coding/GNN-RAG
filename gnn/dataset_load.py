@@ -113,6 +113,7 @@ class BasicDataLoader(object):
         self.word2id = word2id
         self.id2word = {i: word for word, i in word2id.items()}
         self.relation2id = relation2id
+        self.id2relation = {i: relation for relation, i in relation2id.items()}
         self.entity2id = entity2id
         self.id2entity = {i: entity for entity, i in entity2id.items()}
         self.entities_names, self.names_entities = llm_utils.get_entities_names()
@@ -555,6 +556,10 @@ class BasicDataLoader(object):
         for q_dict in data:
             for k, v in q_dict.items():
                 if k not in question_dict:
+                    if k == "subgraph":
+                        k = "graph"
+                        import pdb; pdb.set_trace()
+                        v = [[self.id2relation[rel_id] for rel_id in tup] for tup in v["tuples"]]
                     question_dict[k] = []
                 question_dict[k].append(v)
         question_dict["cand"] = self.get_candidates(batch)
