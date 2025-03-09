@@ -137,7 +137,7 @@ class Evaluator:
                     #     tp_obj[j]['attention'] = attention_tp.tolist()
         return obj_list
 
-    def evaluate(self, valid_data, test_batch_size=8, valid_text_data=None, write_info=False):
+    def evaluate(self, valid_data, test_batch_size=8, write_info=False):
         write_info = True
         self.model.eval()
         self.count = 0
@@ -155,11 +155,11 @@ class Evaluator:
         max_local_entity = valid_data.max_local_entity
         ignore_prob = (1 - eps) / max_local_entity
         for iteration in tqdm(range(num_epoch)):
-            batch = valid_data.get_batch(iteration, test_batch_size, fact_dropout=0.0, test=True)
-            text_batch = valid_text_data[iteration * test_batch_size : (iteration + 1) * test_batch_size]
-            text_batch["cand"] = valid_data.get_candidates(batch)
+            start = test_batch_size * iteration
+            end = min(test_batch_size * (iteration + 1), valid_data.num_data)
+            batch = valid_data.get_batch(start, end, fact_dropout=0.0, test=True)
             with torch.no_grad():
-                loss, extras, pred_dist, tp_list, correct, recall = self.model(batch[:-1], text_batch)
+                loss, extras, pred_dist, tp_list, correct, recall = self.model(batch[:-1])
                 pred = torch.max(pred_dist, dim=1)[1]
             if self.model_name == 'GraftNet':
                 local_entity, query_entities, _, _, query_text, _, \

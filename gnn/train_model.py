@@ -126,8 +126,8 @@ class Trainer_KBQA(object):
             print("Load ckpt from", ckpt_path)
             self.load_ckpt(ckpt_path)
 
-    def evaluate(self, data, test_batch_size=1, valid_text_data=None, write_info=False):
-        return self.evaluator.evaluate(data, test_batch_size, valid_text_data, write_info)
+    def evaluate(self, data, test_batch_size=1, write_info=False):
+        return self.evaluator.evaluate(data, test_batch_size, write_info)
 
     def train(self, start_epoch, end_epoch):
         # self.load_pretrain()
@@ -154,7 +154,7 @@ class Trainer_KBQA(object):
             self.logger.info("Training h1 : {:.4f}, f1 : {:.4f}".format(np.mean(h1_list_all), np.mean(f1_list_all)))
             
             if (epoch + 1) % eval_every == 0:
-                eval_f1, eval_h1, eval_em, eval_acc = self.evaluate(self.valid_data, self.test_batch_size, self.valid_text_data)
+                eval_f1, eval_h1, eval_em, eval_acc = self.evaluate(self.valid_data, self.test_batch_size)
                 wandb.log({"Val f1": eval_f1})
                 wandb.log({"Val h1": eval_h1})
                 wandb.log({"Val em": eval_em})
@@ -176,7 +176,7 @@ class Trainer_KBQA(object):
                         self.logger.info("BEST EVAL F1: {:.4f}".format(eval_f1))
                         do_test = True
 
-                eval_f1, eval_h1, eval_em, eval_acc = self.evaluate(self.test_data, self.test_batch_size, self.test_text_data)
+                eval_f1, eval_h1, eval_em, eval_acc = self.evaluate(self.test_data, self.test_batch_size)
                 wandb.log({"Test f1": eval_f1})
                 wandb.log({"Test h1": eval_h1})
                 wandb.log({"Test em": eval_em})
