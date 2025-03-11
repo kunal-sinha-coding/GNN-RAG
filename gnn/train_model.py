@@ -42,7 +42,7 @@ class Trainer_KBQA(object):
         self.bsz = self.args['batch_size']
         self.test_batch_size = args['test_batch_size']
         self.data_folder = args['data_folder']
-        self.data_name = os.path.split(self.data_folder)[-1]
+        self.data_name = self.data_folder#os.path.split(self.data_folder)[-1]
         self.fact_drop = args['fact_drop']
         self.device = torch.device('cuda' if args['use_cuda'] else 'cpu')
         self.reset_time = 0

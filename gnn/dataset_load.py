@@ -3,7 +3,7 @@ import numpy as np
 import re
 from tqdm import tqdm
 import torch
-from collections import Counter
+from collections import Counter, defaultdict
 import random
 import warnings
 import pickle
@@ -552,16 +552,16 @@ class BasicDataLoader(object):
 
     def get_question_dict(self, batch, start, end):
         data = self.data[start : end]
-        question_dict = {}
+        question_dict = defaultdict(list)
         for q_dict in data:
             for k, v in q_dict.items():
-                if k not in question_dict:
-                    if k == "subgraph":
-                        k = "graph"
-                        import pdb; pdb.set_trace()
-                        v = [[self.id2relation[rel_id] for rel_id in tup] for tup in v["tuples"]]
-                    question_dict[k] = []
-                question_dict[k].append(v)
+                if k == "subgraph":
+                    text_tuples = []
+                    for h, r, t in v["tuples"]:
+                        text_tuples.append([self.id2entity[h], self.id2relation[r], self.id2entity[t]])
+                    question_dict["graph"].append(text_tuples)
+                else:
+                    question_dict[k].append(v)
         question_dict["cand"] = self.get_candidates(batch)
         return question_dict
 
