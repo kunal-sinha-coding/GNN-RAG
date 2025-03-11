@@ -58,7 +58,7 @@ class ReaRev(BaseModel):
         self.llm_args = argparse.Namespace( #ToDo: dont hardcode
             add_rule=False, cot=False, d='RoG-cwq', data_path='rmanluo', debug=False, dtype='fp16', 
             each_line=False, encrypt=False, explain=False, filter_empty=False, force=False, 
-            max_new_tokens=512, maximun_token=4096, model_name='RoG', model_path='TinyLlama/TinyLlama-1.1B-Chat-v0.6', 
+            max_new_tokens=512, maximun_token=4096, model_name='RoG', model_path='rmanluo/RoG',#'TinyLlama/TinyLlama-1.1B-Chat-v0.6', 
             n=1, predict_path='llm/results/KGQA-GNN-RAG/rearev-sbert', prompt_path='llm/prompts/llama2_predict.txt', 
             rule_path='llm/results/gen_rule_path/RoG-cwq/RoG/test/predictions_3_False.jsonl', 
             rule_path_g1='llm/results/gnn/RoG-cwq/rearev-sbert/test.info', 
@@ -191,14 +191,14 @@ class ReaRev(BaseModel):
         return cur_loss
         
     def evaluate_llm(self, question_dict):
-        all_input, _ = self.input_builder.process_input_batch(question_dict, all_input=True)
+        all_input, _ = self.input_builder.process_input_batch(question_dict, include_all_paths=True)
         correct = [False for inp in all_input]
         for i in range(len(correct)):
             prediction = self.llm_model.generate_sentence(all_input[i]).strip()
             correct[i] = prediction in question_dict["answer"][i]
         return correct
     
-    def forward(self, batch, question_dict, training=False, replug=True, top_k=10, gamma=1e5, 
+    def forward(self, batch, question_dict, training=False, replug=True, top_k=100, gamma=1e5, 
                 save_ppl_files=[], debug_ppl=True, overwrite_ppl=True):
         """
         Forward function: creates instructions and performs GNN reasoning.
@@ -279,14 +279,8 @@ class ReaRev(BaseModel):
         if training:
             if replug and question_dict:
                 with torch.no_grad():
-                    llm_likelihood = torch.zeros((bsz, num_cands)).to(self.device)
-                    ppl_files_exist = all([os.path.exists(ppl_file) for ppl_file in save_ppl_files])
-                    if (not overwrite_ppl and len(save_ppl_files) > 0 and ppl_files_exist):
-                        for i, ppl_file in enumerate(save_ppl_files):
-                            curr_perplexity = torch.load(ppl_file).to(self.device)
-                            num_scores = curr_perplexity.size(-1)
-                            llm_likelihood[i, :num_scores] = torch.softmax(curr_perplexity * gamma, dim=-1)
-                    else:
+                    ppl_files_missing = any([not os.path.exists(ppl_file) for ppl_file in save_ppl_files])
+                    if overwrite_ppl or ppl_files_missing:
                         perplexities = []
                         idx = 0
                         #Stop once all entries in batch have no candidates left
@@ -303,9 +297,13 @@ class ReaRev(BaseModel):
                             perplexities.append(curr_perplexity)
                             idx += top_k
                         llm_perplexity = torch.cat(perplexities, dim=-1)
-                        if len(save_ppl_files) > 0:
-                            for i in range(bsz):
-                                torch.save(llm_perplexity[i:i+1, :], save_ppl_files[i])
+                        for i in range(bsz):
+                            torch.save(llm_perplexity[i:i+1, :], save_ppl_files[i])
+                    llm_likelihood = torch.zeros((bsz, num_cands)).to(self.device)
+                    for i in range(bsz):
+                        llm_perplexity = torch.load(save_ppl_files[i]).to(self.device)
+                        num_scores = llm_perplexity.size(-1)
+                        llm_likelihood[i, :num_scores] = torch.softmax(llm_perplexity * gamma, dim=-1)
                     # if debug_ppl:
                     #     recall = []
                     #     for i, curr_perplexity in enumerate(llm_perplexity):
