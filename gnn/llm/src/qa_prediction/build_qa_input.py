@@ -97,10 +97,6 @@ class PromptBuilder(object):
         Take question as input and return the input with prompt
         '''
         question = question_dict['question']
-        #ToDo: HARDCODE FOR NOW 
-        question_dict['q_entity'] = ["Person:John_Smith"]
-        question_dict['choices'] = []
-        
         if not question.endswith('?'):
             question += '?'
         
@@ -141,7 +137,7 @@ class PromptBuilder(object):
            
         input = self.QUESTION.format(question = question)
         # MCQ
-        if len(question_dict['choices']) > 0:
+        if 'choices' in question_dict and len(question_dict['choices']) > 0:
             choices = '\n'.join(question_dict['choices'])
             input += self.CHOICES.format(choices = choices)
             if self.add_rule or question_dict['cand'] is not None:

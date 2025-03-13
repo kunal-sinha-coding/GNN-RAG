@@ -111,16 +111,15 @@ class Llama(BaseLanguageModel):
             reduction="none"
         ).reshape(full_labels.shape)
         question_id = self.tokenizer.encode(["INST"])[-1]
-        # Get last index of question_id by reversing full_tok and doing argmax
-        # We don't do seq_len-1 because we'd have to do +1 later to mask ] too
-        question_indices = seq_len - (full_tok.flip(dims=[1]) == question_id).long().argmax(dim=-1)
+        # Get last index of question_id token INST by reversing full_tok and doing argmax
+        question_indices = (seq_len - 1) - (full_tok.flip(dims=[1]) == question_id).long().argmax(dim=-1)
         question_indices = question_indices[:, None].repeat(1, seq_len) #Reshape to same size as full_tok
-        question_mask = torch.arange(seq_len)[None, :].repeat(num_inputs, 1).to(self.device) <= question_indices + 1 #Mask question tokens and the one spacing token afterwards
+        question_mask = torch.arange(seq_len)[None, :].repeat(num_inputs, 1).to(self.device) <= question_indices + 2 #Mask question tokens with +2 for ]\n afterwards
         ce_loss[question_mask] = 0 #Ignore question tokens
         ce_loss[full_tok == self.tokenizer.pad_token_id] = 0 #Ignore pad tokens
-        full_labels[question_mask] = IGNORE_INDEX
-        z = (full_labels != IGNORE_INDEX).sum(dim=-1) # Get average of CE loss
-        ce_loss = ce_loss.sum(dim=-1) / z
+        #full_labels[question_mask] = IGNORE_INDEX
+        #z = (full_labels != IGNORE_INDEX).sum(dim=-1)
+        ce_loss = ce_loss.sum(dim=-1) / (ce_loss > 0).sum(dim=-1) # Get average of CE loss
         # Get indices where padding begins i.e sequence ends
         #pad_indices = (full_tok == self.tokenizer.pad_token_id).long().argmax(dim=-1)
         #pad_indices[pad_indices == 0] = seq_len # If no pad token, go to end of sequence 

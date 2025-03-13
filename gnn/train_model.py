@@ -252,7 +252,7 @@ class Trainer_KBQA(object):
             question_dict = self.train_data.get_question_dict(batch, start, end)
             save_ppl_files = []
             for idx in range(start, end):
-                save_ppl_files.append(os.path.join("perplexity_scores", self.data_name, f"{idx}-{idx+1}.pt"))
+                save_ppl_files.append(os.path.join("perplexity_scores", self.data_name, "train", f"{idx}-{idx+1}.pt"))
             loss, _, _, tp_list, correct, recall = self.model(batch, question_dict, training=True, save_ppl_files=save_ppl_files)
             # if tp_list is not None:
             h1_list, f1_list = tp_list

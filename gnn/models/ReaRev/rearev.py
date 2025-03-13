@@ -198,7 +198,7 @@ class ReaRev(BaseModel):
             correct[i] = prediction in question_dict["answer"][i]
         return correct
     
-    def forward(self, batch, question_dict, training=False, replug=True, top_k=100, gamma=1e5, 
+    def forward(self, batch, question_dict, training=False, replug=True, top_k=10, gamma=20, 
                 save_ppl_files=[], debug_ppl=True, overwrite_ppl=True):
         """
         Forward function: creates instructions and performs GNN reasoning.
@@ -276,7 +276,7 @@ class ReaRev(BaseModel):
         candidates = question_dict["cand"]
         top_indices = sorted_indices[:, -top_k:]
         top_cands = candidates[np.arange(bsz)[:, None], top_indices.cpu().numpy()]
-        if training:
+        if training or not training: #ToDo: Remove this or statement
             if replug and question_dict:
                 with torch.no_grad():
                     ppl_files_missing = any([not os.path.exists(ppl_file) for ppl_file in save_ppl_files])
@@ -326,7 +326,7 @@ class ReaRev(BaseModel):
             tp_list = [h1.tolist(), f1.tolist()]
         else:
             tp_list = None
-            correct = self.evaluate_llm(question_dict)
+            #correct = self.evaluate_llm(question_dict)
         return loss, pred, pred_dist, tp_list, correct, recall
 
     

@@ -62,7 +62,7 @@ def add_shared_args(parser):
     parser.add_argument('--load_experiment', default=None, type=str)
     parser.add_argument('--load_ckpt_file', default=None, type=str)
     parser.add_argument('--eps', default=0.95, type=float) # threshold for f1
-    parser.add_argument('--test_batch_size', default=20, type=int)
+    parser.add_argument('--test_batch_size', default=1, type=int)
     parser.add_argument('--q_type', default='seq', type=str)
 
 

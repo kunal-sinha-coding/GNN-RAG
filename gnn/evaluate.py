@@ -6,6 +6,7 @@ import numpy as np
 import math, os
 import json
 import pickle
+import wandb
 
 def cal_accuracy(pred, answer_dist):
     """
@@ -83,7 +84,7 @@ class Evaluator:
             file = open('ent2id.pickle', 'rb')
             self.entity2name = list((pickle.load(file)).keys())
             file.close()
-
+        self.data_name = args['data_folder']
             
         id2relation = {idx: relation for relation, idx in relation2id.items()}
         num_rel_ori = len(relation2id)
@@ -137,7 +138,7 @@ class Evaluator:
                     #     tp_obj[j]['attention'] = attention_tp.tolist()
         return obj_list
 
-    def evaluate(self, valid_data, test_batch_size=8, write_info=False):
+    def evaluate(self, valid_data, test_batch_size=1, write_info=False):
         write_info = True
         self.model.eval()
         self.count = 0
@@ -159,8 +160,11 @@ class Evaluator:
             end = min(test_batch_size * (iteration + 1), valid_data.num_data)
             batch = valid_data.get_batch(start, end, fact_dropout=0.0, test=True)
             question_dict = valid_data.get_question_dict(batch, start, end)
+            save_ppl_files = []
             with torch.no_grad():
-                loss, extras, pred_dist, tp_list, correct, recall = self.model(batch[:-1], question_dict)
+                for idx in range(start, end):
+                    save_ppl_files.append(os.path.join("perplexity_scores", self.data_name, "test", f"{idx}-{idx+1}.pt"))
+                loss, extras, pred_dist, tp_list, correct, recall = self.model(batch[:-1], question_dict, save_ppl_files=save_ppl_files)
                 pred = torch.max(pred_dist, dim=1)[1]
             if self.model_name == 'GraftNet':
                 local_entity, query_entities, _, _, query_text, _, \
@@ -236,6 +240,7 @@ class Evaluator:
         print('avg_f1', np.mean(f1s))
         print('avg_precision', np.mean(precisions))
         print('avg_recall', np.mean(recalls))
+        wandb.log({"Test loss": np.mean(eval_loss)})
         
         print(case_ct)
         if write_info:
