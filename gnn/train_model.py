@@ -154,7 +154,7 @@ class Trainer_KBQA(object):
             self.logger.info("Training h1 : {:.4f}, f1 : {:.4f}".format(np.mean(h1_list_all), np.mean(f1_list_all)))
             
             if (epoch + 1) % eval_every == 0:
-                eval_f1, eval_h1, eval_em, eval_acc = self.evaluate(self.valid_data, self.test_batch_size)
+                eval_f1, eval_h1, eval_em, eval_acc = self.evaluate(self.valid_data, self.test_batch_size, is_test=False)
                 wandb.log({"Val f1": eval_f1})
                 wandb.log({"Val h1": eval_h1})
                 wandb.log({"Val em": eval_em})
@@ -226,7 +226,7 @@ class Trainer_KBQA(object):
     def evaluate_single(self, filename):
         if filename is not None:
             self.load_ckpt(filename)
-        eval_f1, eval_hits, eval_ems, eval_acc = self.evaluate(self.valid_data, self.test_batch_size, write_info=False)
+        eval_f1, eval_hits, eval_ems, eval_acc = self.evaluate(self.valid_data, self.test_batch_size, write_info=False, is_test=False)
         self.logger.info("EVAL F1: {:.4f}, H1: {:.4f}, EM {:.4f}".format(eval_f1, eval_hits, eval_ems))
         test_f1, test_hits, test_ems, test_acc = self.evaluate(self.test_data, self.test_batch_size, write_info=True)
         self.logger.info("TEST F1: {:.4f}, H1: {:.4f}, EM {:.4f}".format(test_f1, test_hits, test_ems))

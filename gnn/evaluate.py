@@ -138,8 +138,9 @@ class Evaluator:
                     #     tp_obj[j]['attention'] = attention_tp.tolist()
         return obj_list
 
-    def evaluate(self, valid_data, test_batch_size=1, write_info=False):
+    def evaluate(self, valid_data, test_batch_size=1, write_info=False, is_test=True):
         write_info = True
+        data_split = "test" if is_test else "dev"
         self.model.eval()
         self.count = 0
         eps = self.eps
@@ -163,7 +164,7 @@ class Evaluator:
             save_ppl_files = []
             with torch.no_grad():
                 for idx in range(start, end):
-                    save_ppl_files.append(os.path.join("perplexity_scores", self.data_name, "test", f"{idx}-{idx+1}.pt"))
+                    save_ppl_files.append(os.path.join("perplexity_scores", self.data_name, data_split, f"{idx}-{idx+1}.pt"))
                 loss, extras, pred_dist, tp_list, correct, recall = self.model(batch[:-1], question_dict, save_ppl_files=save_ppl_files)
                 pred = torch.max(pred_dist, dim=1)[1]
             if self.model_name == 'GraftNet':
@@ -240,7 +241,7 @@ class Evaluator:
         print('avg_f1', np.mean(f1s))
         print('avg_precision', np.mean(precisions))
         print('avg_recall', np.mean(recalls))
-        wandb.log({"Test loss": np.mean(eval_loss)})
+        wandb.log({f"{data_split.title()} loss": np.mean(eval_loss)})
         
         print(case_ct)
         if write_info:
