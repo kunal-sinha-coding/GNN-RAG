@@ -198,7 +198,7 @@ class ReaRev(BaseModel):
             correct[i] = prediction in question_dict["answer"][i]
         return correct
     
-    def forward(self, batch, question_dict, training=False, replug=True, top_k=10, gamma=20, 
+    def forward(self, batch, question_dict, training=False, replug=True, top_k=10, gamma=1e5, 
                 save_ppl_files=[], debug_ppl=True, overwrite_ppl=True):
         """
         Forward function: creates instructions and performs GNN reasoning.
@@ -304,6 +304,10 @@ class ReaRev(BaseModel):
                         llm_perplexity = torch.load(save_ppl_files[i]).to(self.device)
                         num_scores = llm_perplexity.size(-1)
                         llm_likelihood[i, :num_scores] = torch.softmax(llm_perplexity * gamma, dim=-1)
+                        if debug_ppl:
+                            best_ppl_cands = candidates[i, llm_perplexity.argsort(dim=-1)[0, -10:].cpu().numpy()]
+                            print(question_dict["question"][i])
+                            print(best_ppl_cands)
                     # if debug_ppl:
                     #     recall = []
                     #     for i, curr_perplexity in enumerate(llm_perplexity):
