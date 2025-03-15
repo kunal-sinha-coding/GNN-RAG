@@ -199,7 +199,7 @@ class ReaRev(BaseModel):
         return correct
     
     def forward(self, batch, question_dict, training=False, replug=True, top_k=10, gamma=1e5, 
-                save_ppl_files=[], debug_ppl=True, overwrite_ppl=True):
+                save_ppl_files=[], debug_ppl=False, overwrite_ppl=True):
         """
         Forward function: creates instructions and performs GNN reasoning.
         """
@@ -274,7 +274,7 @@ class ReaRev(BaseModel):
         correct_idx = answer_dist.argmax(dim=-1)
         #text_batch["cand"][np.arange(bsz), correct_idx.cpu().numpy()] = [entity[0] for entity in text_batch["a_entity"]]
         candidates = question_dict["cand"]
-        top_indices = sorted_indices[:, -top_k:]
+        top_indices = sorted_indices[:, -1:]
         top_cands = candidates[np.arange(bsz)[:, None], top_indices.cpu().numpy()]
         if training or not training: #ToDo: Remove this or statement
             if replug and question_dict:
@@ -284,11 +284,13 @@ class ReaRev(BaseModel):
                         perplexities = []
                         idx = 0
                         #Stop once all entries in batch have no candidates left
+                        input_master_list = []
                         while idx < num_cands:#and any([cand[idx] != "" for cand in candidates]):
                             question_dict["cand"] = candidates[:, idx : min((idx + top_k, num_cands))]
                             all_input, all_input_list = self.input_builder.process_input_batch(question_dict)
                             # Only compute when case_valid
                             all_input_list = [inp for i, inp in enumerate(all_input_list) if case_valid[i].item()]
+                            input_master_list.extend(all_input_list[0])
                             curr_perplexity = torch.zeros(question_dict["cand"].shape).to(self.device)
                             if len(all_input_list) > 0:
                                 curr_perplexity_valid = self.llm_model.calculate_perplexity(all_input_list, question_dict["answer"])
@@ -306,8 +308,6 @@ class ReaRev(BaseModel):
                         llm_likelihood[i, :num_scores] = torch.softmax(llm_perplexity * gamma, dim=-1)
                         if debug_ppl:
                             best_ppl_cands = candidates[i, llm_perplexity.argsort(dim=-1)[0, -10:].cpu().numpy()]
-                            print(question_dict["question"][i])
-                            print(best_ppl_cands)
                     # if debug_ppl:
                     #     recall = []
                     #     for i, curr_perplexity in enumerate(llm_perplexity):
@@ -324,13 +324,12 @@ class ReaRev(BaseModel):
         pred_dist = self.dist_history[-1]
         pred = torch.max(pred_dist, dim=1)[1]
         question_dict["cand"] = top_cands
-        correct = [False for i in range(bsz)] #Ignore for train for sake of timing
+        correct = self.evaluate_llm(question_dict)#[False for i in range(bsz)] #Ignore for train for sake of timing
         if training:
             h1, f1 = self.get_eval_metric(pred_dist, answer_dist)
             tp_list = [h1.tolist(), f1.tolist()]
         else:
             tp_list = None
-            #correct = self.evaluate_llm(question_dict)
         return loss, pred, pred_dist, tp_list, correct, recall
 
     

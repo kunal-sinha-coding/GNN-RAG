@@ -58,7 +58,7 @@ class Llama(BaseLanguageModel):
         full_inputs = []
         for i in range(bsz):
             for j in range(k):
-                full_inputs.append(f"{inputs[i][j]}{answers[i][0]}")
+                full_inputs.append(f"{inputs[i][j]}\n{answers[i][0]}")
         #Only use first answer; \n is needed for low ppl
         full_encoding = self.tokenizer.batch_encode_plus(
             full_inputs, return_tensors="pt", padding=True
@@ -114,7 +114,7 @@ class Llama(BaseLanguageModel):
         # Get last index of question_id token INST by reversing full_tok and doing argmax
         question_indices = (seq_len - 1) - (full_tok.flip(dims=[1]) == question_id).long().argmax(dim=-1)
         question_indices = question_indices[:, None].repeat(1, seq_len) #Reshape to same size as full_tok
-        question_mask = torch.arange(seq_len)[None, :].repeat(num_inputs, 1).to(self.device) <= question_indices + 2 #Mask question tokens with +2 for ]\n afterwards
+        question_mask = torch.arange(seq_len)[None, :].repeat(num_inputs, 1).to(self.device) <= question_indices + 3 #Mask question tokens with +1 for ] afterwards
         ce_loss[question_mask] = 0 #Ignore question tokens
         ce_loss[full_tok == self.tokenizer.pad_token_id] = 0 #Ignore pad tokens
         #full_labels[question_mask] = IGNORE_INDEX
@@ -138,6 +138,7 @@ class Llama(BaseLanguageModel):
         #ce_loss = ce_loss.sum(dim=-1) / z
         # Get perplexity and likelihood
         llm_perplexity = -ce_loss.exp() # Take negative because lower ppl is better
+        print("Best ppl score: ", ce_loss.exp().sort()[0][0])
         return llm_perplexity.reshape((bsz, k))
     
     def tokenize(self, text):
