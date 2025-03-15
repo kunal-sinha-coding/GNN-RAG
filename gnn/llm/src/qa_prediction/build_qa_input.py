@@ -28,6 +28,7 @@ class PromptBuilder(object):
     SAQ_INSTRUCTION = """Please answer the following questions. Please keep the answer as simple as possible and return all the possible answer as a list."""
     MCQ_RULE_INSTRUCTION = """Based on the reasoning paths, please answer the given question. Please select the answers from the given choices and return the answers only."""
     SAQ_RULE_INSTRUCTION = """Based on the reasoning paths, please answer the given question. Please keep the answer as simple as possible and return all the possible answers as a list."""
+    LONG_RULE_INSTRUCTION = """Based on the reasoning paths, please answer the given question in one sentence."""
     #SAQ_RULE_INSTRUCTION = """Based on the provided knowledge, please answer the given question. Please keep the answer as simple as possible and return all the possible answers as a list."""
     #SAQ_RULE_INSTRUCTION = """Your tasks is to use the following facts and answer the question. Make sure that you use the information from the facts provided. Please keep the answer as simple as possible and return all the possible answers as a list."""
     COT = """ Let's think it step by step."""
@@ -37,7 +38,7 @@ class PromptBuilder(object):
     #GRAPH_CONTEXT = """The facts are the following:\n{context}\n\n"""
     CHOICES = """\nChoices:\n{choices}"""
     EACH_LINE = """ Please return each answer in a new line."""
-    def __init__(self, prompt_path, encrypt=False, add_rule = False, use_true = False, cot = False, explain = False, use_random = False, each_line = False, maximun_token = 4096, tokenize: Callable = lambda x: len(x)):
+    def __init__(self, prompt_path, encrypt=False, add_rule = False, use_true = False, cot = False, explain = False, use_random = False, each_line = False, maximun_token = 4096, tokenize: Callable = lambda x: len(x), long_answer = True):
         self.prompt_template = self._read_prompt_template(prompt_path)
         self.add_rule = add_rule
         self.use_true = use_true
@@ -47,6 +48,7 @@ class PromptBuilder(object):
         self.maximun_token = maximun_token
         self.tokenize = tokenize
         self.each_line = each_line
+        self.long_answer = long_answer
 
         self.encrypt=encrypt
         
@@ -146,7 +148,9 @@ class PromptBuilder(object):
                 instruction = self.MCQ_INSTRUCTION
         # SAQ
         else:
-            if self.add_rule or question_dict['cand'] is not None:
+            if self.long_answer:
+                instruction = self.LONG_RULE_INSTRUCTION
+            elif self.add_rule or question_dict['cand'] is not None:
                 instruction = self.SAQ_RULE_INSTRUCTION
             else:
                 instruction = self.SAQ_INSTRUCTION
