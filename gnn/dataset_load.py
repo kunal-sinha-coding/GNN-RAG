@@ -672,7 +672,7 @@ def load_dict(filename):
                 word2id[word] = len(word2id)
     else:
         idx = 0 #Hardcode for now - redo later
-        for filename in ["data/finkg/train.json", "data/finkg/dev.json", "data/finkg/test.json"]:
+        for filename in ["data/nvidia/train.json", "data/nvidia/dev.json", "data/nvidia/test.json"]:
             with open(filename, 'r', encoding='utf-8') as f_in:
                 for line in f_in:
                     sample = json.loads(line.strip())

@@ -1,0 +1,22 @@
+Q: How much did NVIDIA's data center revenue grow year-over-year in Q4 FY25, and what new product drove significant sales in this segment? Reasoning paths:
+NVIDIA -> has_business_segment -> Data_Center -> had_Q4FY25_revenue -> $35.6_billion NVIDIA -> has_business_segment -> Data_Center -> had_YoY_growth_in_Q4FY25 -> 93% NVIDIA -> produces_product -> Blackwell_AI_supercomputers -> achieved_sales -> billions_of_dollars_in_first_quarter
+Q: What was NVIDIA's fiscal 2025 net income compared to the previous year, and how did this translate to earnings per share growth? Reasoning paths:
+NVIDIA -> had_fiscal_period -> FY2025 -> had_net_income -> $72.88_billion 
+NVIDIA -> had_fiscal_period -> FY2024 -> had_net_income -> $29.76_billion
+NVIDIA_FY2025_net_income -> has_YoY_growth_percentage -> 145%
+NVIDIA -> had_fiscal_period -> FY2025 -> had_GAAP_EPS -> $2.94
+NVIDIA_FY2025_GAAP_EPS -> has_YoY_growth_percentage -> 147%
+Q: How did NVIDIA's automotive revenue perform in Q4 FY25, and which major automaker partnership was announced during this period? Reasoning paths:
+NVIDIA -> has_business_segment -> Automotive -> had_Q4FY25_revenue -> $570_million NVIDIA -> has_business_segment -> Automotive -> had_YoY_growth_in_Q4FY25 -> 103% NVIDIA -> announced_partnership_with -> Toyota -> described_as -> world's_largest_automaker
+Toyota -> will_build -> next_generation_vehicles -> using -> NVIDIA_DRIVE_AGX_Orin
+NVIDIA_DRIVE_AGX_Orin -> runs -> NVIDIA_DriveOS -> has_certification -> ASIL-D_functional_safety
+Q: What is NVIDIA's revenue outlook for Q1 FY2026, and how does their expected gross margin compare to Q4 FY25? Reasoning paths:
+NVIDIA -> has_outlook_for -> Q1_FY2026 -> expected_revenue -> $43.0_billion
+NVIDIA_Q1_FY2026_revenue_outlook -> has_variance -> plus_or_minus_2%
+NVIDIA -> has_outlook_for -> Q1_FY2026 -> expected_GAAP_gross_margin -> 70.6%
+NVIDIA -> had_fiscal_period -> Q4_FY2025 -> had_GAAP_gross_margin -> 73.0%
+NVIDIA_Q1_FY2026_gross_margin -> compared_to -> NVIDIA_Q4_FY2025_gross_margin -> shows_decrease_of -> 2.4_percentage_points
+Q: How much free cash flow did NVIDIA generate in FY25, and what was their cash position at the end of the fiscal year? Reasoning paths:
+NVIDIA -> had_fiscal_period -> FY2025 -> generated_free_cash_flow -> $60.72_billion
+NVIDIA -> as_of -> January_26_2025 -> had_cash_and_equivalents -> $43.21_billion
+January_26_2025 -> is_end_date_of -> NVIDIA_FY2025
