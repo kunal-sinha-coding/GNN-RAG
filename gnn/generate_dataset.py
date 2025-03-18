@@ -6,16 +6,22 @@ import os
 from tqdm import tqdm
 import re
 
-model_name = "meta-llama/Llama-2-7b-chat-hf"
+model_name = "Qwen/Qwen2.5-7B-Instruct" #"meta-llama/Llama-2-7b-chat-hf"
 device = "cuda" if torch.cuda.is_available() else "cpu"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
+cache_dir = "../../cache_dir"
+max_new_tokens = {
+    "Qwen/Qwen2.5-7B-Instruct": 1024,
+    "meta-llama/Llama-2-7b-chat-hf": 1024
+}
 model = AutoModelForCausalLM.from_pretrained(
     model_name,
+    cache_dir=cache_dir,
     torch_dtype=torch.float16
 ).to(device)
 
 FOLDER_NAME = os.path.join("data", "synthetic")
-LLM_PROMPT = (
+LLAMA_PROMPT = (
     '''
     [INST] <<SYS>>
     <</SYS>>
@@ -25,14 +31,33 @@ LLM_PROMPT = (
     '''
 )
 QUESTION_END_TOKEN = "[END]"
-QA_FORMAT = {
-    "id": "",
-    "question": "",
-    "answer": "",
-}
-PATH_FORMAT = {
-    "paths": [ ["NVIDIA", "relation.earned_in_Q42025", "$200 billion" ] ]
-}
+FEWSHOT_QA = [
+    {
+        "id": "",
+        "question": "Which major automaker partnership did TSLA announce during Q4 FY25, and which regions is this expected to have greatest impact on revenue?",
+        "answer": "Tesla announced a strategic manufacturing partnership with Toyota during Q4 FY25, with the collaboration expected to have the greatest revenue impact in the Asia-Pacific region."
+    },
+    {
+        "id": "",
+        "question": "How much did NVIDIA's data center revenue grow year-over-year in Q4 FY25, and what new product drove significant sales in this segment?",
+        "answer": "NVIDIA's data center revenue grew 93% year-over-year to a record $35.6 billion in Q4 FY25, with Blackwell AI supercomputers achieving billions of dollars in sales in its first quarter."
+    }
+]
+FEWSHOT_PATHS = [
+    {
+        "paths": [
+            ["TSLA", "announced_partnership", "Toyota", "during_time_period", "Q4 FY25"],
+            ["TSLA Toyota partnership", "affects_revenue", "Asia-Pacific region"]
+        ]
+    },
+    {
+        "paths": [ 
+            ["NVIDIA", "has_business_segment", "Data Center", "had_Q4FY25_revenue", "$35.6 billion"],
+            ["NVIDIA", "has_business_segment", "Data Center", "had_YoY_growth_in_Q4FY25", "93%"],
+            ["NVIDIA", "produces", "Blackwell AI supercomputers", "achieved_sales_in_Q4Y25", "billions of dollars"]
+        ]
+    }
+]
 PROMPTS = {
     "qa": (
         '''
@@ -41,27 +66,40 @@ PROMPTS = {
         Each question requires synthesizing multiple different pieces of information.
         Each answer is 1 sentence long. 
         Here is an example of the correct format:
-        {qa_format}
+        {fewshot_qa}
         The id field is an integer starting at {id_num} and incrementing by 1 onwards.
         '''
     ),
     "paths": (
         '''
-        Output the dictionaries above with a new field added to each called \"paths\".
+        Output the dictionaries below with a new field added to each called \"paths\".
         This field contains a list of reasoning paths in a knowledge graph that could answer the question.
         Each dictionary can contain one or more paths. Each path can be of any length.
         Keep everything else in the dictionary the same except for the new field.
-        here is an example of the correct format:
-        {qa_format_paths}
+        Here is an example of the correct format:
+        {fewshot_qa_paths}
+        Only output the new dictionaries.
         '''
     ),
 }
 
 def generate(prompt, context=""):
-    llm_prompt = LLM_PROMPT.format(prompt=prompt, context=context)
+    if "llama" in model_name.lower():
+        llm_prompt = LLAMA_PROMPT.format(prompt=prompt, context=context)
+    elif "qwen" in model_name.lower():
+        messages = [
+            {"role": "system", "content": "You are Qwen, created by Alibaba Cloud. You are a helpful assistant."},
+            {"role": "user", "content": prompt},
+            {"role": "user", "content": context}
+        ]
+        llm_prompt = [tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True
+        )]
     inputs = tokenizer(llm_prompt, return_tensors="pt").to(device)
     inputs_len = inputs.input_ids.size(-1)
-    outputs = model.generate(**inputs)
+    outputs = model.generate(**inputs, max_new_tokens=max_new_tokens[model_name])
     response = tokenizer.decode(outputs[0][inputs_len:], skip_special_tokens=True)
     return response
 
@@ -71,7 +109,7 @@ def update_qa_pairs(qa_pairs, response, num_questions, id_num, append=False):
     response_split = response.split("}")
     if append:
         for i in range(id_num, id_num + num_questions):
-            qa_pairs.append(QA_FORMAT) #Default
+            qa_pairs.append("") #Default
     for resp in response_split:
         if "{" in resp and idx < len(qa_pairs):
             start = resp.index("{")
@@ -83,13 +121,13 @@ def update_qa_pairs(qa_pairs, response, num_questions, id_num, append=False):
                 qa_pairs[idx] = resp_dict
                 idx += 1
             except:
-                import pdb; pdb.set_trace()
+                print("Cannot convert to json: ", resp[start:end])
 
 def generate_qa(qa_pairs, num_questions, id_num):
     response = generate(PROMPTS["qa"].format(
         num_questions=num_questions,
         id_num=id_num, 
-        qa_format=json.dumps(QA_FORMAT),
+        fewshot_qa=json.dumps(FEWSHOT_QA),
     ))
     update_qa_pairs(qa_pairs, response, num_questions, id_num, append=True)
 
@@ -99,7 +137,8 @@ def update_id_dicts(qa_pairs, num_questions, id_num, subgraph, entity2id, relati
         for word in re.split(r"[\?\.\! ]", pair["question"].lower()):
             if word not in vocab and word.strip() != "":
                 vocab[word] = len(vocab)
-        if pair["id"] == "":
+        if "paths" not in pair:
+            print("Paths not found ", pair) 
             continue
         for path in pair["paths"]:
             path_ids = []
@@ -115,27 +154,23 @@ def update_id_dicts(qa_pairs, num_questions, id_num, subgraph, entity2id, relati
             subgraph["tuples"].append(path_ids)
     subgraph["entities"] = list(range(len(entity2id)))
 
-def generate_paths(qa_pairs, num_questions, id_num,
-                    subgraph, entity2id, relation2id, vocab):
+def generate_paths(qa_pairs, num_questions, id_num):
     qa_pairs_batch = qa_pairs[id_num : id_num + num_questions]
-    qa_pairs_str = QUESTION_END_TOKEN.join([
-        json.dumps(pair) for pair in qa_pairs_batch
-    ])
-    qa_format_paths = {**QA_FORMAT, **PATH_FORMAT}
+    qa_pairs_str = "Dictionary:\n" + "\n".join([json.dumps(pair) for pair in qa_pairs_batch])
+    fewshot_qa_paths = [
+        {**qa, **paths} for qa, paths in zip(FEWSHOT_QA, FEWSHOT_PATHS)
+    ]
     response = generate(PROMPTS["paths"].format(
-        qa_format_paths=json.dumps(qa_format_paths),
-    ), context="Dictionaries:\n" + qa_pairs_str)
+        fewshot_qa_paths=json.dumps(fewshot_qa_paths),
+    ), context=qa_pairs_str)
     update_qa_pairs(qa_pairs, response, num_questions, id_num)
-    update_id_dicts(
-        qa_pairs, num_questions, id_num,
-        subgraph, entity2id, relation2id, vocab
-    )
 
 def synthesize_step(qa_pairs, num_questions, id_num, 
                     subgraph, entity2id, relation2id, vocab):
     generate_qa(qa_pairs, num_questions, id_num)
-    generate_paths(
-        qa_pairs, num_questions, id_num, 
+    generate_paths(qa_pairs, num_questions, id_num)
+    update_id_dicts(
+        qa_pairs, num_questions, id_num,
         subgraph, entity2id, relation2id, vocab
     )
 
@@ -147,7 +182,7 @@ def save_qa_pairs(qa_pairs, num_questions, id_num, file_name, overwrite=True):
     permissions = "w" if id_num == 0 and overwrite else "a"
     with open(file_name, permissions) as f:
         for pair in qa_pairs_batch:
-            if pair['id'] != "":
+            if "paths" in pair:
                 f.write(json.dumps(pair) + "\n")
 
 def save_id_dicts(qa_pairs, subgraph, entity2id, relation2id, vocab, qa_file,
@@ -158,7 +193,7 @@ def save_id_dicts(qa_pairs, subgraph, entity2id, relation2id, vocab, qa_file,
         f.write(subgraph_str)
     with open(os.path.join(FOLDER_NAME, qa_file), "w") as f:
         for pair in qa_pairs:
-            if pair["id"] != "":
+            if "paths" in pair:
                 pair["subgraph"] = subgraph
                 pair["entities"] = [entity2id[path[0]] for path in pair["paths"]]
                 f.write(json.dumps(pair) + "\n")
@@ -167,12 +202,12 @@ def save_id_dicts(qa_pairs, subgraph, entity2id, relation2id, vocab, qa_file,
             f.write(entity + "\n")
     with open(os.path.join(FOLDER_NAME, relations_file), "w") as f:
         for relation in relation2id.keys():
-            f.write(relation + "\n")
+            f.write("relation." + relation + "\n")
     with open(os.path.join(FOLDER_NAME, vocab_file), "w") as f:
         for word in vocab.keys():
             f.write(word + "\n")
 
-def synthesize(num_steps=100, num_questions=10, split="train"):
+def synthesize(num_steps=1000, num_questions=10, split="train"):
     qa_pairs = []
     subgraph = {"tuples": [], "entities": []}
     entity2id = {}
