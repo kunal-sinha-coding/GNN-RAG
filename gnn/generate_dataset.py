@@ -11,8 +11,8 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 cache_dir = "../../cache_dir"
 max_new_tokens = {
-    "Qwen/Qwen2.5-7B-Instruct": 1024,
-    "meta-llama/Llama-2-7b-chat-hf": 1024
+    "Qwen/Qwen2.5-7B-Instruct": 2048,
+    "meta-llama/Llama-2-7b-chat-hf": 2048
 }
 model = AutoModelForCausalLM.from_pretrained(
     model_name,
@@ -109,7 +109,7 @@ def update_qa_pairs(qa_pairs, response, num_questions, id_num, append=False):
     response_split = response.split("}")
     if append:
         for i in range(id_num, id_num + num_questions):
-            qa_pairs.append("") #Default
+            qa_pairs.append("")
     for resp in response_split:
         if "{" in resp and idx < len(qa_pairs):
             start = resp.index("{")
@@ -121,6 +121,7 @@ def update_qa_pairs(qa_pairs, response, num_questions, id_num, append=False):
                 qa_pairs[idx] = resp_dict
                 idx += 1
             except:
+                import pdb; pdb.set_trace()
                 print("Cannot convert to json: ", resp[start:end])
 
 def generate_qa(qa_pairs, num_questions, id_num):
@@ -138,7 +139,7 @@ def update_id_dicts(qa_pairs, num_questions, id_num, subgraph, entity2id, relati
             if word not in vocab and word.strip() != "":
                 vocab[word] = len(vocab)
         if "paths" not in pair:
-            print("Paths not found ", pair) 
+            import pdb; pdb.set_trace()
             continue
         for path in pair["paths"]:
             path_ids = []
