@@ -128,8 +128,8 @@ def update_qa_pairs(qa_pairs, response, num_questions, id_num, append=False):
                     resp_dict = get_json(resp + "]]}")
                 except:
                     print("Cannot convert to json: ", resp[start:end])
-                    continue
-            qa_pairs[idx] = resp_dict
+            if resp_dict:
+                qa_pairs[idx] = resp_dict
             idx += 1
 
 def generate_qa(qa_pairs, num_questions, id_num):
@@ -143,12 +143,12 @@ def generate_qa(qa_pairs, num_questions, id_num):
 def update_id_dicts(qa_pairs, num_questions, id_num, subgraph, entity2id, relation2id, vocab, tuple_len=3):
     qa_pairs_batch = qa_pairs[id_num : id_num + num_questions]
     for pair in qa_pairs_batch:
+        if "paths" not in pair:
+            print("Paths not found ", pair)
+            continue
         for word in re.split(r"[\?\.\! ]", pair["question"].lower()):
             if word not in vocab and word.strip() != "":
                 vocab[word] = len(vocab)
-        if "paths" not in pair:
-            print("paths not found ", pair)
-            continue
         for path in pair["paths"]:
             path_ids = []
             for i, ent in enumerate(path):
