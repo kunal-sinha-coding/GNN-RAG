@@ -46,15 +46,15 @@ FEWSHOT_QA = [
 FEWSHOT_PATHS = [
     {
         "paths": [
-            ["TSLA", "announced_partnership", "Toyota", "during_time_period", "Q4 FY25"],
-            ["TSLA Toyota partnership", "affects_revenue", "Asia-Pacific region"]
+            ["TSLA", "relation.announced_partnership", "Toyota", "relation.during_time_period", "Q4 FY25"],
+            ["TSLA Toyota partnership", "relation.affects_revenue", "Asia-Pacific region"]
         ]
     },
     {
         "paths": [ 
-            ["NVIDIA", "has_business_segment", "Data Center", "had_Q4FY25_revenue", "$35.6 billion"],
-            ["NVIDIA", "has_business_segment", "Data Center", "had_YoY_growth_in_Q4FY25", "93%"],
-            ["NVIDIA", "produces", "Blackwell AI supercomputers", "achieved_sales_in_Q4Y25", "billions of dollars"]
+            ["NVIDIA", "relation.has_business_segment", "Data Center", "relation.had_Q4FY25_revenue", "$35.6 billion"],
+            ["NVIDIA", "relation.has_business_segment", "Data Center", "relation.had_YoY_growth_in_Q4FY25", "93%"],
+            ["NVIDIA", "relation.produces", "Blackwell AI supercomputers", "relation.achieved_sales_in_Q4Y25", "billions of dollars"]
         ]
     }
 ]
@@ -74,7 +74,8 @@ PROMPTS = {
         '''
         Output the dictionaries below with a new field added to each called \"paths\".
         This field contains a list of reasoning paths in a knowledge graph that could answer the question.
-        Each dictionary can contain one or more paths. Each path can be of any length.
+        Each path connects entities with relations and can be of varying lengths.
+        Each dictionary can contain one or more paths.
         Keep everything else in the dictionary the same except for the new field.
         Here is an example of the correct format:
         {fewshot_qa_paths}
@@ -103,6 +104,12 @@ def generate(prompt, context=""):
     response = tokenizer.decode(outputs[0][inputs_len:], skip_special_tokens=True)
     return response
 
+def get_json(string):
+    try:
+        return json.loads(string)
+    except:
+        return None
+
 def update_qa_pairs(qa_pairs, response, num_questions, id_num, append=False):
     idx = id_num
     response = response.replace("\n", "").strip()
@@ -113,16 +120,17 @@ def update_qa_pairs(qa_pairs, response, num_questions, id_num, append=False):
     for resp in response_split:
         if "{" in resp and idx < len(qa_pairs):
             start = resp.index("{")
-            last_quote = resp[::-1].index("\"")
-            last_bracket = resp[::-1].index("]") if "]" in resp else len(resp)
-            end = len(resp) - min((last_quote, last_bracket))
-            try:
-                resp_dict = json.loads(resp[start:end] + "}")
-                qa_pairs[idx] = resp_dict
-                idx += 1
-            except:
-                import pdb; pdb.set_trace()
-                print("Cannot convert to json: ", resp[start:end])
+            end = len(resp) - resp[::-1].index("\"")
+            resp = resp[start:end]
+            resp_dict = get_json(resp + "}")
+            if not resp_dict:
+                try:
+                    resp_dict = get_json(resp + "]]}")
+                except:
+                    print("Cannot convert to json: ", resp[start:end])
+                    continue
+            qa_pairs[idx] = resp_dict
+            idx += 1
 
 def generate_qa(qa_pairs, num_questions, id_num):
     response = generate(PROMPTS["qa"].format(
@@ -132,14 +140,14 @@ def generate_qa(qa_pairs, num_questions, id_num):
     ))
     update_qa_pairs(qa_pairs, response, num_questions, id_num, append=True)
 
-def update_id_dicts(qa_pairs, num_questions, id_num, subgraph, entity2id, relation2id, vocab):
+def update_id_dicts(qa_pairs, num_questions, id_num, subgraph, entity2id, relation2id, vocab, tuple_len=3):
     qa_pairs_batch = qa_pairs[id_num : id_num + num_questions]
     for pair in qa_pairs_batch:
         for word in re.split(r"[\?\.\! ]", pair["question"].lower()):
             if word not in vocab and word.strip() != "":
                 vocab[word] = len(vocab)
         if "paths" not in pair:
-            import pdb; pdb.set_trace()
+            print("paths not found ", pair)
             continue
         for path in pair["paths"]:
             path_ids = []
@@ -152,7 +160,9 @@ def update_id_dicts(qa_pairs, num_questions, id_num, subgraph, entity2id, relati
                     if ent not in relation2id:
                         relation2id[ent] = len(relation2id)
                     path_ids.append(relation2id[ent])
-            subgraph["tuples"].append(path_ids)
+                if len(path_ids) == tuple_len:
+                    subgraph["tuples"].append(path_ids)
+                    path_ids = path_ids[-1:]
     subgraph["entities"] = list(range(len(entity2id)))
 
 def generate_paths(qa_pairs, num_questions, id_num):
@@ -195,20 +205,20 @@ def save_id_dicts(qa_pairs, subgraph, entity2id, relation2id, vocab, qa_file,
     with open(os.path.join(FOLDER_NAME, qa_file), "w") as f:
         for pair in qa_pairs:
             if "paths" in pair:
-                pair["subgraph"] = subgraph
                 pair["entities"] = [entity2id[path[0]] for path in pair["paths"]]
+                pair["subgraph"] = subgraph
                 f.write(json.dumps(pair) + "\n")
     with open(os.path.join(FOLDER_NAME, entities_file), "w") as f:
         for entity in entity2id.keys():
             f.write(entity + "\n")
     with open(os.path.join(FOLDER_NAME, relations_file), "w") as f:
         for relation in relation2id.keys():
-            f.write("relation." + relation + "\n")
+            f.write(relation + "\n")
     with open(os.path.join(FOLDER_NAME, vocab_file), "w") as f:
         for word in vocab.keys():
             f.write(word + "\n")
 
-def synthesize(num_steps=1000, num_questions=10, split="train"):
+def synthesize(num_steps=100, num_questions=10, split="train"):
     qa_pairs = []
     subgraph = {"tuples": [], "entities": []}
     entity2id = {}
