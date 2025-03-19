@@ -128,8 +128,8 @@ def update_qa_pairs(qa_pairs, response, num_questions, id_num, append=False):
                     resp_dict = get_json(resp + "]]}")
                 except:
                     print("Cannot convert to json: ", resp[start:end])
-                    continue
-            qa_pairs[idx] = resp_dict
+            if resp_dict:
+                qa_pairs[idx] = resp_dict
             idx += 1
 
 def generate_qa(qa_pairs, num_questions, id_num):
@@ -143,12 +143,12 @@ def generate_qa(qa_pairs, num_questions, id_num):
 def update_id_dicts(qa_pairs, num_questions, id_num, subgraph, entity2id, relation2id, vocab, tuple_len=3):
     qa_pairs_batch = qa_pairs[id_num : id_num + num_questions]
     for pair in qa_pairs_batch:
+        if "paths" not in pair:
+            print("Paths not found ", pair)
+            continue
         for word in re.split(r"[\?\.\! ]", pair["question"].lower()):
             if word not in vocab and word.strip() != "":
                 vocab[word] = len(vocab)
-        if "paths" not in pair:
-            print("paths not found ", pair)
-            continue
         for path in pair["paths"]:
             path_ids = []
             for i, ent in enumerate(path):
@@ -218,14 +218,25 @@ def save_id_dicts(qa_pairs, subgraph, entity2id, relation2id, vocab, qa_file,
         for word in vocab.keys():
             f.write(word + "\n")
 
-def synthesize(num_steps=100, num_questions=10, split="train"):
+def split_data(qa_file, src_file="train.json", dst_files=["dev.json", "test.json"], keep=.8):
+    lines = []
+    with open(os.path.join(FOLDER_NAME, qa_file), "r") as f:
+        lines = f.readlines()
+    num_keep = int(keep * len(lines))
+    with open(os.path.join(FOLDER_NAME, src_file), "w") as src:
+        src.writelines(lines[:num_keep])
+    for dst_f in dst_files:
+        with open(os.path.join(FOLDER_NAME, dst_f), "w") as dst:
+            dst.writelines(lines[num_keep:])
+
+def synthesize(num_steps=0, num_questions=10, qa_file="all.json"):
     qa_pairs = []
     subgraph = {"tuples": [], "entities": []}
     entity2id = {}
     relation2id = {}
     vocab = {}
     idx = 0
-    for i in tqdm(range(num_steps), desc=f"Generating {split} data"):
+    for i in tqdm(range(num_steps), desc=f"Generating data"):
         id_num = idx * num_questions
         synthesize_step(
             qa_pairs,
@@ -236,9 +247,9 @@ def synthesize(num_steps=100, num_questions=10, split="train"):
             relation2id=relation2id,
             vocab=vocab
         )
-        qa_file = f"{split}.json"
         save_qa_pairs(qa_pairs, num_questions, id_num, qa_file)
         save_id_dicts(qa_pairs, subgraph, entity2id, relation2id, vocab, qa_file)
         idx += 1
+    split_data(qa_file)
 
 synthesize()
