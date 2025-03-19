@@ -277,50 +277,49 @@ class ReaRev(BaseModel):
         candidates = question_dict["cand"]
         top_indices = sorted_indices[:, -1:]
         top_cands = candidates[np.arange(bsz)[:, None], top_indices.cpu().numpy()]
-        if training or not training: #ToDo: Remove this or statement
-            if replug and question_dict:
-                with torch.no_grad():
-                    ppl_files_missing = any([not os.path.exists(ppl_file) for ppl_file in save_ppl_files])
-                    if overwrite_ppl or ppl_files_missing:
-                        perplexities = []
-                        idx = 0
-                        #Stop once all entries in batch have no candidates left
-                        input_master_list = []
-                        while idx < num_cands:#and any([cand[idx] != "" for cand in candidates]):
-                            question_dict["cand"] = candidates[:, idx : min((idx + top_k, num_cands))]
-                            all_input, all_input_list = self.input_builder.process_input_batch(question_dict)
-                            # Only compute when case_valid
-                            all_input_list = [inp for i, inp in enumerate(all_input_list) if case_valid[i].item()]
-                            input_master_list.extend(all_input_list[0])
-                            curr_perplexity = torch.zeros(question_dict["cand"].shape).to(self.device)
-                            if len(all_input_list) > 0:
-                                curr_perplexity_valid = self.llm_model.calculate_perplexity(all_input_list, question_dict["answer"])
-                                valid_examples = case_valid[:, 0].nonzero(as_tuple=True)[0]
-                                curr_perplexity[valid_examples] = curr_perplexity_valid
-                            perplexities.append(curr_perplexity)
-                            idx += top_k
-                        llm_perplexity = torch.cat(perplexities, dim=-1)
-                        for i in range(bsz):
-                            torch.save(llm_perplexity[i:i+1, :], save_ppl_files[i])
-                    llm_likelihood = torch.zeros((bsz, num_cands)).to(self.device)
+        if replug and question_dict:
+            with torch.no_grad():
+                ppl_files_missing = any([not os.path.exists(ppl_file) for ppl_file in save_ppl_files])
+                if overwrite_ppl or ppl_files_missing:
+                    perplexities = []
+                    idx = 0
+                    #Stop once all entries in batch have no candidates left
+                    input_master_list = []
+                    while idx < num_cands:#and any([cand[idx] != "" for cand in candidates]):
+                        question_dict["cand"] = candidates[:, idx : min((idx + top_k, num_cands))]
+                        all_input, all_input_list = self.input_builder.process_input_batch(question_dict)
+                        # Only compute when case_valid
+                        all_input_list = [inp for i, inp in enumerate(all_input_list) if case_valid[i].item()]
+                        input_master_list.extend(all_input_list[0])
+                        curr_perplexity = torch.zeros(question_dict["cand"].shape).to(self.device)
+                        if len(all_input_list) > 0:
+                            curr_perplexity_valid = self.llm_model.calculate_perplexity(all_input_list, question_dict["answer"])
+                            valid_examples = case_valid[:, 0].nonzero(as_tuple=True)[0]
+                            curr_perplexity[valid_examples] = curr_perplexity_valid
+                        perplexities.append(curr_perplexity)
+                        idx += top_k
+                    llm_perplexity = torch.cat(perplexities, dim=-1)
                     for i in range(bsz):
-                        llm_perplexity = torch.load(save_ppl_files[i]).to(self.device)
-                        num_scores = llm_perplexity.size(-1)
-                        llm_likelihood[i, :num_scores] = torch.softmax(llm_perplexity * gamma, dim=-1)
-                        if debug_ppl:
-                            best_ppl_cands = candidates[i, llm_perplexity.argsort(dim=-1)[0, -5:].cpu().numpy()]
-                    # if debug_ppl:
-                    #     recall = []
-                    #     for i, curr_perplexity in enumerate(llm_perplexity):
-                    #         rec = 0
-                    #         if case_valid[i].item():
-                    #             indices = curr_perplexity.argsort(dim=-1)
-                    #             best_ppl_idx = (indices == correct_idx[i:i+1, None]).float()
-                    #             rec = indices.size(-1) - best_ppl_idx.argmax(dim=-1).item() - 1
-                    #         recall.append(rec)
-                loss = self.calc_loss_label(curr_dist=pred_dist, teacher_dist=llm_likelihood, label_valid=case_valid)
-            else:
-                loss = self.calc_loss_label(curr_dist=pred_dist, teacher_dist=answer_dist, label_valid=case_valid)
+                        torch.save(llm_perplexity[i:i+1, :], save_ppl_files[i])
+                llm_likelihood = torch.zeros((bsz, num_cands)).to(self.device)
+                for i in range(bsz):
+                    llm_perplexity = torch.load(save_ppl_files[i]).to(self.device)
+                    num_scores = llm_perplexity.size(-1)
+                    llm_likelihood[i, :num_scores] = torch.softmax(llm_perplexity * gamma, dim=-1)
+                    if debug_ppl:
+                        best_ppl_cands = candidates[i, llm_perplexity.argsort(dim=-1)[0, -5:].cpu().numpy()]
+                # if debug_ppl:
+                #     recall = []
+                #     for i, curr_perplexity in enumerate(llm_perplexity):
+                #         rec = 0
+                #         if case_valid[i].item():
+                #             indices = curr_perplexity.argsort(dim=-1)
+                #             best_ppl_idx = (indices == correct_idx[i:i+1, None]).float()
+                #             rec = indices.size(-1) - best_ppl_idx.argmax(dim=-1).item() - 1
+                #         recall.append(rec)
+            loss = self.calc_loss_label(curr_dist=pred_dist, teacher_dist=llm_likelihood, label_valid=case_valid)
+        else:
+            loss = self.calc_loss_label(curr_dist=pred_dist, teacher_dist=answer_dist, label_valid=case_valid)
 
         pred_dist = self.dist_history[-1]
         pred = torch.max(pred_dist, dim=1)[1]
