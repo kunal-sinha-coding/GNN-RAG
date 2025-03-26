@@ -200,7 +200,7 @@ class ReaRev(BaseModel):
         return correct
     
     def forward(self, batch, question_dict, training=False, replug=True, top_k=10, gamma=1e5, 
-                save_ppl_files=[], debug_ppl=True, overwrite_ppl=False):
+                save_ppl_files=[], debug_ppl=False, overwrite_ppl=False):
         """
         Forward function: creates instructions and performs GNN reasoning.
         """
@@ -267,7 +267,7 @@ class ReaRev(BaseModel):
         pred_dist = self.dist_history[-1]
         # Handle degenerate cases
         question_exists = (query_entities.sum(dim=-1, keepdim=True) > 0).float()
-        case_valid = question_exists #Temporary for testing
+        case_valid = question_exists
         loss = torch.tensor([0.0])
         recall = 0.0
         bsz, num_cands = pred_dist.shape
@@ -279,12 +279,12 @@ class ReaRev(BaseModel):
         top_cands = candidates[np.arange(bsz)[:, None], top_indices.cpu().numpy()]
         if replug and question_dict:
             with torch.no_grad():
+                input_master_list = []
                 ppl_files_missing = any([not os.path.exists(ppl_file) for ppl_file in save_ppl_files])
                 if overwrite_ppl or ppl_files_missing:
                     perplexities = []
                     idx = 0
                     #Stop once all entries in batch have no candidates left
-                    input_master_list = []
                     while idx < num_cands:#and any([cand[idx] != "" for cand in candidates]):
                         question_dict["cand"] = candidates[:, idx : min((idx + top_k, num_cands))]
                         all_input, all_input_list = self.input_builder.process_input_batch(question_dict)
@@ -308,6 +308,7 @@ class ReaRev(BaseModel):
                     llm_likelihood[i, :num_scores] = torch.softmax(llm_perplexity * gamma, dim=-1)
                     if debug_ppl:
                         best_ppl_cands = candidates[i, llm_perplexity.argsort(dim=-1)[0, -5:].cpu().numpy()]
+                        print(best_ppl_cands)
                 # if debug_ppl:
                 #     recall = []
                 #     for i, curr_perplexity in enumerate(llm_perplexity):

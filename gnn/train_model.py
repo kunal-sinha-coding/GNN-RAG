@@ -252,6 +252,7 @@ class Trainer_KBQA(object):
             question_dict = self.train_data.get_question_dict(batch, start, end)
             save_ppl_files = []
             for idx in range(start, end):
+                #TODO: create folder if it does not exist
                 save_ppl_files.append(os.path.join("perplexity_scores", self.data_name, "train", f"{idx}-{idx+1}.pt"))
             loss, _, _, tp_list, correct, recall = self.model(batch, question_dict, training=True, save_ppl_files=save_ppl_files)
             # if tp_list is not None:
