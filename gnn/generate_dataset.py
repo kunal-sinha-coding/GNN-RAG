@@ -265,4 +265,20 @@ def synthesize(num_steps=10000, num_questions=10, num_generations=25, qa_file="a
             idx += 1
         split_data(curr_qa_file, f"train{i}.json", [f"dev{i}.json"])
 
-synthesize()
+def combine_data(dst_names=["train", "dev"], 
+                src_names=["synth-fin", "synth-fin-1", "synth-fin-2", "synth-fin-3"]):
+    for dst_name in dst_names:
+        with open(f"{dst_name}.json", "w") as f:
+            f.write("")
+        with open(f"{dst_name}.json", "a") as dst:
+            for src_name in src_names:
+                for file_name in os.listdir(os.path.join("data", src_name)):
+                    if dst_name in file_name:
+                        with open(file_name, "r") as src:
+                            lines = src.readlines()
+                            dst.writelines(lines)
+
+# synthesize()
+combine_data()
+
+
