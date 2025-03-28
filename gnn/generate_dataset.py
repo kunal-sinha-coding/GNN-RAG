@@ -20,7 +20,7 @@ model = AutoModelForCausalLM.from_pretrained(
     torch_dtype=torch.float16
 ).to(device)
 
-DATA_NAME = "synth-fin"
+DATA_NAME = "synth-fin-3"
 FOLDER_NAME = os.path.join("data", DATA_NAME)
 LLAMA_PROMPT = (
     '''
@@ -79,7 +79,7 @@ PROMPTS = {
         Each path connects entities with relations and can be of varying lengths.
         Each dictionary can contain one or more paths.
         Keep everything else in the dictionary the same except for the new field.
-        Here is an example of the correct format:
+        Here is an example of the correct format. The path alternates between entities and relations:
         {fewshot_qa_paths}
         Only output the new dictionaries.
         '''
@@ -142,7 +142,8 @@ def generate_qa(qa_pairs, num_questions, id_num):
     ))
     update_qa_pairs(qa_pairs, response, num_questions, id_num, append=True)
 
-def update_id_dicts(qa_pairs, num_questions, id_num, subgraph, entity2id, relation2id, vocab, tuple_len=3):
+def update_subgraph_and_dicts(qa_pairs, num_questions, id_num, subgraph, 
+                              entity2id, relation2id, vocab, tuple_len=3):
     qa_pairs_batch = qa_pairs[id_num : id_num + num_questions]
     for pair in qa_pairs_batch:
         if "paths" not in pair:
@@ -157,7 +158,10 @@ def update_id_dicts(qa_pairs, num_questions, id_num, subgraph, entity2id, relati
                 if i % 2 == 0:
                     if ent not in entity2id:
                         entity2id[ent] = len(entity2id)
-                    path_ids.append(entity2id[ent])
+                    ent_id = entity2id[ent]
+                    path_ids.append(ent_id)
+                    if ent_id not in subgraph["entities"]:
+                        subgraph["entities"].append(ent_id)
                 else:
                     if ent not in relation2id:
                         relation2id[ent] = len(relation2id)
@@ -165,7 +169,6 @@ def update_id_dicts(qa_pairs, num_questions, id_num, subgraph, entity2id, relati
                 if len(path_ids) == tuple_len:
                     subgraph["tuples"].append(path_ids)
                     path_ids = path_ids[-1:]
-    subgraph["entities"] = list(range(len(entity2id)))
 
 def generate_paths(qa_pairs, num_questions, id_num):
     qa_pairs_batch = qa_pairs[id_num : id_num + num_questions]
@@ -179,13 +182,17 @@ def generate_paths(qa_pairs, num_questions, id_num):
     update_qa_pairs(qa_pairs, response, num_questions, id_num)
 
 def synthesize_step(qa_pairs, num_questions, id_num, 
-                    subgraph, entity2id, relation2id, vocab):
-    generate_qa(qa_pairs, num_questions, id_num)
-    generate_paths(qa_pairs, num_questions, id_num)
-    update_id_dicts(
-        qa_pairs, num_questions, id_num,
-        subgraph, entity2id, relation2id, vocab
-    )
+                    subgraph, entity2id, relation2id, vocab, num_distractors=1):
+    for i in range(num_distractors + 1):
+        curr_pairs, curr_id_num = [], 0
+        if i == 0:
+            curr_pairs, curr_id_num = qa_pairs, id_num
+        generate_qa(curr_pairs, num_questions, curr_id_num)
+        generate_paths(curr_pairs, num_questions, curr_id_num)
+        update_subgraph_and_dicts(
+            curr_pairs, num_questions, curr_id_num,
+            subgraph, entity2id, relation2id, vocab
+        )
 
 def save_qa_pairs(qa_pairs, num_questions, id_num, file_name):
     qa_pairs_batch = qa_pairs[id_num : id_num + num_questions]
@@ -198,22 +205,22 @@ def save_qa_pairs(qa_pairs, num_questions, id_num, file_name):
             if "paths" in pair:
                 f.write(json.dumps(pair) + "\n")
 
-def save_subgraph(qa_pairs, subgraph, qa_file):
+def save_subgraph(qa_pairs, subgraph, entity2id, qa_file):
     with open(os.path.join(FOLDER_NAME, qa_file), "w") as f:
         for pair in qa_pairs:
             if "paths" in pair:
-                pair["entities"] = [entity2id[path[0]] for path in pair["paths"]]
+                pair["entities"] = list(set([entity2id[path[0]] for path in pair["paths"]]))
                 pair["subgraph"] = subgraph
                 f.write(json.dumps(pair) + "\n")
 
-def save_id_dicts(qa_pairs, id_num, entity2id, relation2id, vocab, qa_file,
-                entities_file="entities.txt", relations_file="relations.txt", vocab_file="vocab.txt"):
+def save_id_dicts(qa_pairs, entity2id, relation2id, vocab, entities_file="entities.txt", 
+                  relations_file="relations.txt", vocab_file="vocab.txt"):
     entities_file = os.path.join(FOLDER_NAME, entities_file)
     with open(entities_file, "w") as f:
         for entity in entity2id.keys():
             f.write(entity + "\n")
     relations_file = os.path.join(FOLDER_NAME, relations_file)
-    with open(os.path.join(FOLDER_NAME, relations_file), "w") as f:
+    with open(relations_file, "w") as f:
         for relation in relation2id.keys():
             f.write(relation + "\n")
     vocab_file = os.path.join(FOLDER_NAME, vocab_file)
@@ -232,29 +239,30 @@ def split_data(qa_file, src_file, dst_files, keep=.8):
         with open(os.path.join(FOLDER_NAME, dst_f), "w") as dst:
             dst.writelines(lines[num_keep:])
 
-def synthesize(num_steps=2, num_questions=2, num_generations=2, qa_file="all.json"):
+def synthesize(num_steps=10000, num_questions=10, num_generations=25, qa_file="all.json"):
     qa_pairs = []
     entity2id = {}
     relation2id = {}
     vocab = {}
     idx = 0
     for i in range(num_steps):
-        qa_file = qa_file.split(".")[0] + f"{i}.json" 
+        curr_qa_file = qa_file.split(".")[0] + f"{i}.json" 
         for j in tqdm(range(num_generations), desc=f"Generating data"):
             subgraph = {"tuples": [], "entities": []}
+            id_num = idx * num_questions
             synthesize_step(
                 qa_pairs,
                 num_questions=num_questions, 
-                id_num=(idx * num_questions),
+                id_num=id_num,
                 subgraph=subgraph,
                 entity2id=entity2id,
                 relation2id=relation2id,
                 vocab=vocab
             )
-            save_qa_pairs(qa_pairs, num_questions, qa_file, overwrite)
-            save_subgraph(qa_pairs, subgraph, qa_file)
+            save_qa_pairs(qa_pairs, num_questions, id_num, curr_qa_file)
+            save_subgraph(qa_pairs, subgraph, entity2id, curr_qa_file)
             save_id_dicts(qa_pairs, entity2id, relation2id, vocab)
             idx += 1
-        split_data(qa_file, f"train{i}.json", [f"dev{i}.json"])
+        split_data(curr_qa_file, f"train{i}.json", [f"dev{i}.json"])
 
 synthesize()
