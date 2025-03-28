@@ -17,6 +17,7 @@ import argparse
 from llm.src.llms.language_models.llama import Llama
 from llm.src.qa_prediction.build_qa_input import PromptBuilder
 import wandb
+import requests
 
 VERY_SMALL_NUMBER = 1e-10
 VERY_NEG_NUMBER = -100000000000
@@ -191,12 +192,30 @@ class ReaRev(BaseModel):
         cur_loss = torch.sum(tp_loss) / curr_dist.size(0)
         return cur_loss
         
-    def evaluate_llm(self, question_dict):
+    def evaluate_llm(self, question_dict, eval_sequence=False):
         all_input, _ = self.input_builder.process_input_batch(question_dict, include_all_paths=True)
-        correct = [False for inp in all_input]
-        for i in range(len(correct)):
-            prediction = self.llm_model.generate_sentence(all_input[i]).strip()
-            correct[i] = prediction in question_dict["answer"][i]
+        correct = [0 for inp in all_input]
+        for i, curr_input in enumerate(all_input):
+            prediction = self.llm_model.generate_sentence(curr_input).strip()
+            groundtruth = question_dict["answer"][i]
+            if eval_sequence:
+                url = "https://api.contextual.ai/v1/lmunit"
+                headers = {
+                    "accept": "application/json",
+                    "Authorization": "[insert your API key here]",
+                    "Content-Type": "application/json"
+                }
+                payload = {
+                    "query": question_dict["question"][i],
+                    "response": prediction,
+                    "unit_test": (
+                        f'''Does the response explain the following information correctly? {groundtruth}'''
+                    )
+                }
+                response = requests.post(url, json=payload, headers=headers)
+                correct[i] = response.score
+            else:
+                correct[i] = int(prediction in question_dict["answer"][i])
         return correct
     
     def forward(self, batch, question_dict, training=False, replug=True, top_k=10, gamma=1e5, 
