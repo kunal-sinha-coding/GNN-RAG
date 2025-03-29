@@ -15,11 +15,11 @@ max_new_tokens = {
     "Qwen/Qwen2.5-7B-Instruct": 2048,
     "meta-llama/Llama-2-7b-chat-hf": 2048
 }
-model = AutoModelForCausalLM.from_pretrained(
-    model_name,
-    cache_dir=cache_dir,
-    torch_dtype=torch.float16
-).to(device)
+#model = AutoModelForCausalLM.from_pretrained(
+#    model_name,
+#    cache_dir=cache_dir,
+#    torch_dtype=torch.float16
+#).to(device)
 
 LLAMA_PROMPT = (
     '''
@@ -193,19 +193,11 @@ def synthesize_step(qa_pairs, num_questions, id_num,
             subgraph, entity2id, relation2id, vocab
         )
 
-def save_qa_pairs(qa_pairs, num_questions, id_num, file_name, folder_name, overwrite=False):
-    qa_pairs_batch = qa_pairs[id_num : id_num + num_questions]
+def save_qa_pairs(qa_pairs, subgraph, entity2id, qa_file, folder_name, overwrite=False):
     if not os.path.isdir(folder_name):
         os.mkdir(folder_name)
-    file_name = os.path.join(folder_name, file_name)
-    permissions = "a" if os.path.isfile(file_name) and not overwrite else "w"
-    with open(file_name, permissions) as f:
-        for pair in qa_pairs_batch:
-            if "paths" in pair:
-                f.write(json.dumps(pair) + "\n")
-
-def save_subgraph(qa_pairs, subgraph, entity2id, qa_file, folder_name):
-    with open(os.path.join(folder_name, qa_file), "w") as f:
+    qa_file = os.path.join(folder_name, qa_file)
+    with open(qa_name, "w") as f:
         for pair in qa_pairs:
             if "paths" in pair:
                 pair["entities"] = list(set([entity2id[path[0]] for path in pair["paths"]]))
@@ -236,7 +228,7 @@ def split_data(qa_file, src_file, dst_files, folder_name, keep=.8):
         src.writelines(lines[:num_keep])
     for dst_f in dst_files:
         with open(os.path.join(folder_name, dst_f), "w") as dst:
-            dst.writelines(lines[num_keep:])
+            dst.writelines(lines[num_keep])
 
 def synthesize(num_steps=10000, num_questions=10, num_generations=25, qa_file="all.json", folder_name="synth-fin"):
     qa_pairs = []
@@ -245,7 +237,6 @@ def synthesize(num_steps=10000, num_questions=10, num_generations=25, qa_file="a
     vocab = {}
     idx = 0
     for i in range(num_steps):
-        curr_qa_file = qa_file.split(".")[0] + f"{i}.json" 
         for j in tqdm(range(num_generations), desc=f"Generating data"):
             subgraph = {"tuples": [], "entities": []}
             id_num = idx * num_questions
@@ -258,33 +249,62 @@ def synthesize(num_steps=10000, num_questions=10, num_generations=25, qa_file="a
                 relation2id=relation2id,
                 vocab=vocab
             )
-            save_qa_pairs(qa_pairs, num_questions, id_num, curr_qa_file, folder_name, overwrite=(j==0))
-            save_subgraph(qa_pairs, subgraph, entity2id, curr_qa_file, folder_name)
+            save_qa_pairs(qa_pairs, subgraph, entity2id, qa_file, folder_name)
             save_id_dicts(qa_pairs, entity2id, relation2id, vocab, folder_name)
             idx += 1
-        split_data(curr_qa_file, f"train{i}.json", [f"dev{i}.json"], folder_name)
+        split_data(qa_file, f"train.json", [f"dev.json"], folder_name)
 
-def combine_data(dst_names=["train", "dev"], 
-                src_names=["synth-fin", "synth-fin-1", "synth-fin-2", "synth-fin-3"]):
+def combine_data(dst_names=["train20", "dev20"], 
+        src_names=["synth-fin-2", "synth-fin-3"],
+        entities_file="entities.txt", relations_file="relations.txt", vocab_file="vocab.txt"):
+    main_src = src_names[0]
     for dst_name in dst_names:
-        full_dst_name = os.path.join("data", src_names[0], f"{dst_name}.json")
+        full_dst_name = os.path.join("data", main_src, f"{dst_name}.json")
+        pairs = []
+        entities, relations, words = [], [], []
         with open(full_dst_name, "w") as dst:
-            dst.write("")
-        with open(full_dst_name, "a") as dst:
             for src_name in src_names:
-                import pdb; pdb.set_trace()
-                for file_name in os.listdir(os.path.join("data", src_name)):
-                    if dst_name in file_name:
-                        with open(os.path.join("data", src_name, file_name), "r") as src:
-                            lines = src.readlines()
-                            print(len(lines))
-                            import pdb; pdb.set_trace()
-                            dst.writelines(lines)
+                with open(os.path.join("data", src_name, f"{dst_name}.json"), "r") as src:
+                    lines = src.readlines()
+                    ent_len, rel_len = 0, 0
+                    with open(os.path.join("data", main_src, entities_file), "r") as ent:
+                        ents = ent.readlines()
+                        entities.extend(ents)
+                        ent_len = len(ents)
+                    with open(os.path.join("data", main_src, relations_file), "r") as rel:
+                        rels = rel.readlines()
+                        relations.extend(rels)
+                        rel_len = len(relations)
+                    with open(os.path.join("data", main_src, vocab_file), "r") as voc:
+                        words.extend(voc.readlines())
+                    for line in lines:
+                        pair = json.loads(line)
+                        for i, ent_id in enumerate(pair["entities"]):
+                            pair["entities"][i] = ent_id + ent_len
+                        for i, ent_id in enumerate(pair["subgraph"]["entities"]):
+                            pair["subgraph"]["entities"][i] = ent_id + ent_len
+                        for i, path in enumerate(pair["subgraph"]["tuples"]):
+                            for j, curr_id in enumerate(path):
+                                if i % 2 == 0:
+                                    pair["subgraph"]["tuples"][i][j] = curr_id + ent_len
+                                else:
+                                    pair["subgraph"]["tuples"][i][j] = curr_id + rel_len
+                        pairs.append(json.dumps(pair) + "\n")
+                if src_name != main_src:
+                    extra_files = [entities_file, relations_file, vocab_file]
+                    extra_info = [entities, relations, words]
+                    for file_name, file_info in zip(extra_files, extra_info):
+                        with open(os.path.join("data", main_src, file_name), "w") as f:
+                            pass
+                            #f.writelines(file_info)
+            dst.writelines(pairs)
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--data_name', help='Name of the data to generate')
-args = parser.parse_args()
-folder_name = os.path.join("data", args.data_name)
-synthesize(folder_name=folder_name)
+
+#parser = argparse.ArgumentParser()
+#parser.add_argument('--data_name', help='Name of the data to generate')
+#args = parser.parse_args()
+#folder_name = os.path.join("data", args.data_name)
+#synthesize(folder_name=folder_name)
+combine_data()
 
 
