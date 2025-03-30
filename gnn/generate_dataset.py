@@ -15,11 +15,11 @@ max_new_tokens = {
     "Qwen/Qwen2.5-7B-Instruct": 2048,
     "meta-llama/Llama-2-7b-chat-hf": 2048
 }
-model = AutoModelForCausalLM.from_pretrained(
-   model_name,
-   cache_dir=cache_dir,
-   torch_dtype=torch.float16
-).to(device)
+#model = AutoModelForCausalLM.from_pretrained(
+#   model_name,
+#   cache_dir=cache_dir,
+#   torch_dtype=torch.float16
+#).to(device)
 
 LLAMA_PROMPT = (
     '''
@@ -232,8 +232,7 @@ def split_data(qa_file, src_file, dst_files, folder_name, keep=.8):
         with open(os.path.join(folder_name, dst_f), "w") as dst:
             dst.writelines(lines[num_keep])
 
-def synthesize_step(qa_pairs, num_questions, id_num, 
-                    entity2id, relation2id, vocab, num_distractors=1):
+def synthesize_step(qa_pairs, num_questions, id_num, num_distractors=1):
     for i in range(num_distractors + 1):
         curr_pairs, curr_id_num = [], 0
         if i == 0:
@@ -243,9 +242,6 @@ def synthesize_step(qa_pairs, num_questions, id_num,
 
 def synthesize(num_steps=10000, num_questions=10, num_generations=25, qa_file="all", folder_name="synth-fin"):
     qa_pairs = []
-    entity2id = {}
-    relation2id = {}
-    vocab = {}
     idx = 0
     for i in range(num_steps):
         curr_qa_file = f"{qa_file}{i}.json"
@@ -254,33 +250,33 @@ def synthesize(num_steps=10000, num_questions=10, num_generations=25, qa_file="a
             synthesize_step(
                 qa_pairs,
                 num_questions=num_questions, 
-                id_num=id_num,
-                entity2id=entity2id,
-                relation2id=relation2id,
-                vocab=vocab
+                id_num=id_num
             )
             save_qa_pairs(qa_pairs, entity2id, qa_file, folder_name)
-            save_dicts(qa_pairs, entity2id, relation2id, vocab, folder_name)
             idx += 1
         split_data(qa_file, f"train.json", [f"dev.json"], folder_name)
 
 def combine_data(file_names=["dev"], dst_folder="synth-fin", 
         src_folders=["synth-fin-0", "synth-fin-1"],
         entities_file="entities.txt", relations_file="relations.txt", vocab_file="vocab.txt"):
+    #Combine the dictionaries
+    update
+    #Combine the qa pairs
     for file_name in file_names:
         dst_file = os.path.join("data", dst_folder, f"{file_name}.json")
         all_pairs = []
         with open(dst_file, "w") as dst:
             dst.write("")
             for src_fold in src_folders:
-                for relevant_file in os.path.lisdir(os.path.join("data", src_fold)):
-                    src_file = os.path.join("data", src_fold, f"{relevant_file}.json")
+                for relevant_file in os.listdir(os.path.join("data", src_fold)):
+                    src_file = os.path.join("data", src_fold, relevant_file)
                     with open(src_file, "r") as src:
                         pairs = [json.loads(l) for l in src.readlines()]
                         subgraph = create_subgraph(pairs, entity2id, relation2id, vocab, tuple_len=3)
                         for i in range(len(pairs)):
                             pairs[i]["subgraph"] = subgraph
                             all_pairs.append(json.dumps(pairs[i]))
+                        import pdb; pdb.set_trace()
             dst.writelines(all_pairs)
 
 
