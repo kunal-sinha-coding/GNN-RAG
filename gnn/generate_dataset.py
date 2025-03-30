@@ -152,9 +152,18 @@ def update_qa_pairs(qa_pairs, response, num_questions, id_num, append=False):
                 qa_pairs[idx] = resp_dict
             idx += 1
 
-def update_dicts(qa_pairs, num_questions, id_num, entity2id, relation2id, vocab, tuple_len=3):
+def save_qa_pairs(qa_pairs, num_questions, id_num, qa_file, folder_name):
     qa_pairs_batch = qa_pairs[id_num : id_num + num_questions]
-    for pair in qa_pairs_batch:
+    if not os.path.isdir(folder_name):
+        os.mkdir(folder_name)
+    qa_file = os.path.join(folder_name, qa_file)
+    with open(qa_file, "w") as f:
+        for pair in qa_pairs_batch:
+            if "paths" in pair:
+                f.write(json.dumps(pair) + "\n")
+
+def update_subgraph_and_dicts(pairs, subgraph, entity2id, relation2id, vocab, tuple_len=3):
+    for pair in pairs:
         if "paths" not in pair:
             print("Paths not found ", pair)
             continue
@@ -167,47 +176,29 @@ def update_dicts(qa_pairs, num_questions, id_num, entity2id, relation2id, vocab,
                 if i % 2 == 0:
                     if ent not in entity2id:
                         entity2id[ent] = len(entity2id)
-                else:
-                    if ent not in relation2id:
-                        relation2id[ent] = len(relation2id)
-
-def create_subgraph(pairs, entity2id, relation2id, vocab, tuple_len=3):
-    subgraph = {"tuples": [], "entities": []}
-    for pair in pairs:
-        if "paths" not in pair:
-            print("Paths not found ", pair)
-            continue
-        for word in re.split(VOCAB_SPLIT_RE, pair["question"].lower()):
-            if word not in vocab and word.strip() != "":
-                vocab[word] = len(vocab)
-        for path in pair["paths"]:
-            path_ids = []
-            for i, ent in enumerate(path):
-                if i % 2 == 0:
                     ent_id = entity2id[ent]
                     path_ids.append(ent_id)
                     if ent_id not in subgraph["entities"]:
                         subgraph["entities"].append(ent_id)
                 else:
+                    if ent not in relation2id:
+                        relation2id[ent] = len(relation2id)
                     path_ids.append(relation2id[ent])
                 if len(path_ids) == tuple_len:
                     subgraph["tuples"].append(path_ids)
                     path_ids = path_ids[-1:]
-    return subgraph
 
-def save_qa_pairs(qa_pairs, num_questions, id_num, entity2id, qa_file, folder_name, overwrite=False):
-    qa_pairs_batch = qa_pairs[id_num : id_num + num_questions]
-    if not os.path.isdir(folder_name):
-        os.mkdir(folder_name)
+def save_subgraph(pairs, subgraph, entity2id, folder_name, qa_file):
     qa_file = os.path.join(folder_name, qa_file)
-    with open(qa_name, "w") as f:
-        for pair in qa_pairs_batch:
+    with open(qa_file, "w") as f:
+        for pair in pairs:
             if "paths" in pair:
+                pair["subgraph"] = subgraph
                 pair["entities"] = list(set([entity2id[path[0]] for path in pair["paths"]]))
                 f.write(json.dumps(pair) + "\n")
 
-def save_dicts(qa_pairs, entity2id, relation2id, vocab, folder_name, entities_file="entities.txt", 
-                  relations_file="relations.txt", vocab_file="vocab.txt"):
+def save_dicts(entity2id, relation2id, vocab, folder_name,
+                entities_file="entities.txt", relations_file="relations.txt", vocab_file="vocab.txt"):
     entities_file = os.path.join(folder_name, entities_file)
     with open(entities_file, "w") as f:
         for entity in entity2id.keys():
@@ -244,7 +235,6 @@ def synthesize(num_steps=10000, num_questions=10, num_generations=25, qa_file="a
     qa_pairs = []
     idx = 0
     for i in range(num_steps):
-        curr_qa_file = f"{qa_file}{i}.json"
         for j in tqdm(range(num_generations), desc=f"Generating data"):
             id_num = idx * num_questions
             synthesize_step(
@@ -252,76 +242,31 @@ def synthesize(num_steps=10000, num_questions=10, num_generations=25, qa_file="a
                 num_questions=num_questions, 
                 id_num=id_num
             )
-            save_qa_pairs(qa_pairs, entity2id, qa_file, folder_name)
+            save_qa_pairs(qa_pairs, num_questions, id_num, qa_file, folder_name)
             idx += 1
         split_data(qa_file, f"train.json", [f"dev.json"], folder_name)
 
-def combine_data(file_names=["dev"], dst_folder="synth-fin", 
+def combine_data(qa_files=["train", "dev"], dst_folder="synth-fin", 
         src_folders=["synth-fin-0", "synth-fin-1"],
         entities_file="entities.txt", relations_file="relations.txt", vocab_file="vocab.txt"):
-    #Combine the dictionaries
-    update
+    entity2id, relation2id, vocab = {}, {}, {}
     #Combine the qa pairs
-    for file_name in file_names:
-        dst_file = os.path.join("data", dst_folder, f"{file_name}.json")
+    for qa_file in qa_files:
+        dst_file = os.path.join("data", dst_folder, f"{qa_file}.json")
         all_pairs = []
         with open(dst_file, "w") as dst:
             dst.write("")
             for src_fold in src_folders:
-                for relevant_file in os.listdir(os.path.join("data", src_fold)):
-                    src_file = os.path.join("data", src_fold, relevant_file)
-                    with open(src_file, "r") as src:
-                        pairs = [json.loads(l) for l in src.readlines()]
-                        subgraph = create_subgraph(pairs, entity2id, relation2id, vocab, tuple_len=3)
-                        for i in range(len(pairs)):
-                            pairs[i]["subgraph"] = subgraph
-                            all_pairs.append(json.dumps(pairs[i]))
-                        import pdb; pdb.set_trace()
+                src_file = os.path.join("data", src_fold, f"{qa_file}.json")
+                with open(src_file, "r") as src:
+                    pairs = [json.loads(l) for l in src.readlines()]
+                    #Handle the dictionaries
+                    subgraph = {"tuples": [], "entities": []}
+                    update_subgraph_and_dicts(pairs, subgraph, entity2id, relation2id, vocab)
+                    save_subgraph(pairs, subgraph, entity2id, folder_name, qa_file)
+                    all_pairs.extend(pairs)
             dst.writelines(all_pairs)
-
-
-
-#     main_src = src_names[0]
-#     for dst_name in dst_names:
-#         full_dst_name = os.path.join("data", main_src, f"{dst_name}.json")
-#         pairs = []
-#         entities, relations, words = [], [], []
-#         with open(full_dst_name, "w") as dst:
-#             for src_name in src_names:
-#                 with open(os.path.join("data", src_name, f"{dst_name}.json"), "r") as src:
-#                     lines = src.readlines()
-#                     ent_len, rel_len = 0, 0
-#                     with open(os.path.join("data", main_src, entities_file), "r") as ent:
-#                         ents = ent.readlines()
-#                         entities.extend(ents)
-#                         ent_len = len(ents)
-#                     with open(os.path.join("data", main_src, relations_file), "r") as rel:
-#                         rels = rel.readlines()
-#                         relations.extend(rels)
-#                         rel_len = len(relations)
-#                     with open(os.path.join("data", main_src, vocab_file), "r") as voc:
-#                         words.extend(voc.readlines())
-#                     for line in lines:
-#                         pair = json.loads(line)
-#                         for i, ent_id in enumerate(pair["entities"]):
-#                             pair["entities"][i] = ent_id + ent_len
-#                         for i, ent_id in enumerate(pair["subgraph"]["entities"]):
-#                             pair["subgraph"]["entities"][i] = ent_id + ent_len
-#                         for i, path in enumerate(pair["subgraph"]["tuples"]):
-#                             for j, curr_id in enumerate(path):
-#                                 if i % 2 == 0:
-#                                     pair["subgraph"]["tuples"][i][j] = curr_id + ent_len
-#                                 else:
-#                                     pair["subgraph"]["tuples"][i][j] = curr_id + rel_len
-#                         pairs.append(json.dumps(pair) + "\n")
-#                 if src_name != main_src:
-#                     extra_files = [entities_file, relations_file, vocab_file]
-#                     extra_info = [entities, relations, words]
-#                     for file_name, file_info in zip(extra_files, extra_info):
-#                         with open(os.path.join("data", main_src, file_name), "w") as f:
-#                             pass
-#                             #f.writelines(file_info)
-#             dst.writelines(pairs)
+    save_dicts(entity2id, relation2id, vocab, folder_name)
 
 # parser = argparse.ArgumentParser()
 # parser.add_argument('--data_name', help='Name of the data to generate')
