@@ -15,11 +15,11 @@ max_new_tokens = {
     "Qwen/Qwen2.5-7B-Instruct": 2048,
     "meta-llama/Llama-2-7b-chat-hf": 2048
 }
-#model = AutoModelForCausalLM.from_pretrained(
-#    model_name,
-#    cache_dir=cache_dir,
-#    torch_dtype=torch.float16
-#).to(device)
+model = AutoModelForCausalLM.from_pretrained(
+   model_name,
+   cache_dir=cache_dir,
+   torch_dtype=torch.float16
+).to(device)
 
 LLAMA_PROMPT = (
     '''
@@ -111,6 +111,25 @@ def get_json(string):
     except:
         return None
 
+def generate_qa(qa_pairs, num_questions, id_num):
+    response = generate(PROMPTS["qa"].format(
+        num_questions=num_questions,
+        id_num=id_num, 
+        fewshot_qa=json.dumps(FEWSHOT_QA),
+    ))
+    update_qa_pairs(qa_pairs, response, num_questions, id_num, append=True)
+
+def generate_paths(qa_pairs, num_questions, id_num):
+    qa_pairs_batch = qa_pairs[id_num : id_num + num_questions]
+    qa_pairs_str = "Dictionary:\n" + "\n".join([json.dumps(pair) for pair in qa_pairs_batch])
+    fewshot_qa_paths = [
+        {**qa, **paths} for qa, paths in zip(FEWSHOT_QA, FEWSHOT_PATHS)
+    ]
+    response = generate(PROMPTS["paths"].format(
+        fewshot_qa_paths=json.dumps(fewshot_qa_paths),
+    ), context=qa_pairs_str)
+    update_qa_pairs(qa_pairs, response, num_questions, id_num)
+
 def update_qa_pairs(qa_pairs, response, num_questions, id_num, append=False):
     idx = id_num
     response = response.replace("\n", "").strip()
@@ -133,16 +152,7 @@ def update_qa_pairs(qa_pairs, response, num_questions, id_num, append=False):
                 qa_pairs[idx] = resp_dict
             idx += 1
 
-def generate_qa(qa_pairs, num_questions, id_num):
-    response = generate(PROMPTS["qa"].format(
-        num_questions=num_questions,
-        id_num=id_num, 
-        fewshot_qa=json.dumps(FEWSHOT_QA),
-    ))
-    update_qa_pairs(qa_pairs, response, num_questions, id_num, append=True)
-
-def update_subgraph_and_dicts(qa_pairs, num_questions, id_num, subgraph, 
-                              entity2id, relation2id, vocab, tuple_len=3):
+def update_dicts(qa_pairs, num_questions, id_num, entity2id, relation2id, vocab, tuple_len=3):
     qa_pairs_batch = qa_pairs[id_num : id_num + num_questions]
     for pair in qa_pairs_batch:
         if "paths" not in pair:
@@ -157,54 +167,46 @@ def update_subgraph_and_dicts(qa_pairs, num_questions, id_num, subgraph,
                 if i % 2 == 0:
                     if ent not in entity2id:
                         entity2id[ent] = len(entity2id)
+                else:
+                    if ent not in relation2id:
+                        relation2id[ent] = len(relation2id)
+
+def create_subgraph(pairs, entity2id, relation2id, vocab, tuple_len=3):
+    subgraph = {"tuples": [], "entities": []}
+    for pair in pairs:
+        if "paths" not in pair:
+            print("Paths not found ", pair)
+            continue
+        for word in re.split(VOCAB_SPLIT_RE, pair["question"].lower()):
+            if word not in vocab and word.strip() != "":
+                vocab[word] = len(vocab)
+        for path in pair["paths"]:
+            path_ids = []
+            for i, ent in enumerate(path):
+                if i % 2 == 0:
                     ent_id = entity2id[ent]
                     path_ids.append(ent_id)
                     if ent_id not in subgraph["entities"]:
                         subgraph["entities"].append(ent_id)
                 else:
-                    if ent not in relation2id:
-                        relation2id[ent] = len(relation2id)
                     path_ids.append(relation2id[ent])
                 if len(path_ids) == tuple_len:
                     subgraph["tuples"].append(path_ids)
                     path_ids = path_ids[-1:]
+    return subgraph
 
-def generate_paths(qa_pairs, num_questions, id_num):
+def save_qa_pairs(qa_pairs, num_questions, id_num, entity2id, qa_file, folder_name, overwrite=False):
     qa_pairs_batch = qa_pairs[id_num : id_num + num_questions]
-    qa_pairs_str = "Dictionary:\n" + "\n".join([json.dumps(pair) for pair in qa_pairs_batch])
-    fewshot_qa_paths = [
-        {**qa, **paths} for qa, paths in zip(FEWSHOT_QA, FEWSHOT_PATHS)
-    ]
-    response = generate(PROMPTS["paths"].format(
-        fewshot_qa_paths=json.dumps(fewshot_qa_paths),
-    ), context=qa_pairs_str)
-    update_qa_pairs(qa_pairs, response, num_questions, id_num)
-
-def synthesize_step(qa_pairs, num_questions, id_num, 
-                    subgraph, entity2id, relation2id, vocab, num_distractors=1):
-    for i in range(num_distractors + 1):
-        curr_pairs, curr_id_num = [], 0
-        if i == 0:
-            curr_pairs, curr_id_num = qa_pairs, id_num
-        generate_qa(curr_pairs, num_questions, curr_id_num)
-        generate_paths(curr_pairs, num_questions, curr_id_num)
-        update_subgraph_and_dicts(
-            curr_pairs, num_questions, curr_id_num,
-            subgraph, entity2id, relation2id, vocab
-        )
-
-def save_qa_pairs(qa_pairs, subgraph, entity2id, qa_file, folder_name, overwrite=False):
     if not os.path.isdir(folder_name):
         os.mkdir(folder_name)
     qa_file = os.path.join(folder_name, qa_file)
     with open(qa_name, "w") as f:
-        for pair in qa_pairs:
+        for pair in qa_pairs_batch:
             if "paths" in pair:
                 pair["entities"] = list(set([entity2id[path[0]] for path in pair["paths"]]))
-                pair["subgraph"] = subgraph
                 f.write(json.dumps(pair) + "\n")
 
-def save_id_dicts(qa_pairs, entity2id, relation2id, vocab, folder_name, entities_file="entities.txt", 
+def save_dicts(qa_pairs, entity2id, relation2id, vocab, folder_name, entities_file="entities.txt", 
                   relations_file="relations.txt", vocab_file="vocab.txt"):
     entities_file = os.path.join(folder_name, entities_file)
     with open(entities_file, "w") as f:
@@ -230,81 +232,106 @@ def split_data(qa_file, src_file, dst_files, folder_name, keep=.8):
         with open(os.path.join(folder_name, dst_f), "w") as dst:
             dst.writelines(lines[num_keep])
 
-def synthesize(num_steps=10000, num_questions=10, num_generations=25, qa_file="all.json", folder_name="synth-fin"):
+def synthesize_step(qa_pairs, num_questions, id_num, 
+                    entity2id, relation2id, vocab, num_distractors=1):
+    for i in range(num_distractors + 1):
+        curr_pairs, curr_id_num = [], 0
+        if i == 0:
+            curr_pairs, curr_id_num = qa_pairs, id_num
+        generate_qa(curr_pairs, num_questions, curr_id_num)
+        generate_paths(curr_pairs, num_questions, curr_id_num)
+
+def synthesize(num_steps=10000, num_questions=10, num_generations=25, qa_file="all", folder_name="synth-fin"):
     qa_pairs = []
     entity2id = {}
     relation2id = {}
     vocab = {}
     idx = 0
     for i in range(num_steps):
+        curr_qa_file = f"{qa_file}{i}.json"
         for j in tqdm(range(num_generations), desc=f"Generating data"):
-            subgraph = {"tuples": [], "entities": []}
             id_num = idx * num_questions
             synthesize_step(
                 qa_pairs,
                 num_questions=num_questions, 
                 id_num=id_num,
-                subgraph=subgraph,
                 entity2id=entity2id,
                 relation2id=relation2id,
                 vocab=vocab
             )
-            save_qa_pairs(qa_pairs, subgraph, entity2id, qa_file, folder_name)
-            save_id_dicts(qa_pairs, entity2id, relation2id, vocab, folder_name)
+            save_qa_pairs(qa_pairs, entity2id, qa_file, folder_name)
+            save_dicts(qa_pairs, entity2id, relation2id, vocab, folder_name)
             idx += 1
         split_data(qa_file, f"train.json", [f"dev.json"], folder_name)
 
-def combine_data(dst_names=["train20", "dev20"], 
-        src_names=["synth-fin-2", "synth-fin-3"],
+def combine_data(file_names=["dev"], dst_folder="synth-fin", 
+        src_folders=["synth-fin-0", "synth-fin-1"],
         entities_file="entities.txt", relations_file="relations.txt", vocab_file="vocab.txt"):
-    main_src = src_names[0]
-    for dst_name in dst_names:
-        full_dst_name = os.path.join("data", main_src, f"{dst_name}.json")
-        pairs = []
-        entities, relations, words = [], [], []
-        with open(full_dst_name, "w") as dst:
-            for src_name in src_names:
-                with open(os.path.join("data", src_name, f"{dst_name}.json"), "r") as src:
-                    lines = src.readlines()
-                    ent_len, rel_len = 0, 0
-                    with open(os.path.join("data", main_src, entities_file), "r") as ent:
-                        ents = ent.readlines()
-                        entities.extend(ents)
-                        ent_len = len(ents)
-                    with open(os.path.join("data", main_src, relations_file), "r") as rel:
-                        rels = rel.readlines()
-                        relations.extend(rels)
-                        rel_len = len(relations)
-                    with open(os.path.join("data", main_src, vocab_file), "r") as voc:
-                        words.extend(voc.readlines())
-                    for line in lines:
-                        pair = json.loads(line)
-                        for i, ent_id in enumerate(pair["entities"]):
-                            pair["entities"][i] = ent_id + ent_len
-                        for i, ent_id in enumerate(pair["subgraph"]["entities"]):
-                            pair["subgraph"]["entities"][i] = ent_id + ent_len
-                        for i, path in enumerate(pair["subgraph"]["tuples"]):
-                            for j, curr_id in enumerate(path):
-                                if i % 2 == 0:
-                                    pair["subgraph"]["tuples"][i][j] = curr_id + ent_len
-                                else:
-                                    pair["subgraph"]["tuples"][i][j] = curr_id + rel_len
-                        pairs.append(json.dumps(pair) + "\n")
-                if src_name != main_src:
-                    extra_files = [entities_file, relations_file, vocab_file]
-                    extra_info = [entities, relations, words]
-                    for file_name, file_info in zip(extra_files, extra_info):
-                        with open(os.path.join("data", main_src, file_name), "w") as f:
-                            pass
-                            #f.writelines(file_info)
-            dst.writelines(pairs)
+    for file_name in file_names:
+        dst_file = os.path.join("data", dst_folder, f"{file_name}.json")
+        all_pairs = []
+        with open(dst_file, "w") as dst:
+            dst.write("")
+            for src_fold in src_folders:
+                for relevant_file in os.path.lisdir(os.path.join("data", src_fold)):
+                    src_file = os.path.join("data", src_fold, f"{relevant_file}.json")
+                    with open(src_file, "r") as src:
+                        pairs = [json.loads(l) for l in src.readlines()]
+                        subgraph = create_subgraph(pairs, entity2id, relation2id, vocab, tuple_len=3)
+                        for i in range(len(pairs)):
+                            pairs[i]["subgraph"] = subgraph
+                            all_pairs.append(json.dumps(pairs[i]))
+            dst.writelines(all_pairs)
 
 
-#parser = argparse.ArgumentParser()
-#parser.add_argument('--data_name', help='Name of the data to generate')
-#args = parser.parse_args()
-#folder_name = os.path.join("data", args.data_name)
-#synthesize(folder_name=folder_name)
+
+#     main_src = src_names[0]
+#     for dst_name in dst_names:
+#         full_dst_name = os.path.join("data", main_src, f"{dst_name}.json")
+#         pairs = []
+#         entities, relations, words = [], [], []
+#         with open(full_dst_name, "w") as dst:
+#             for src_name in src_names:
+#                 with open(os.path.join("data", src_name, f"{dst_name}.json"), "r") as src:
+#                     lines = src.readlines()
+#                     ent_len, rel_len = 0, 0
+#                     with open(os.path.join("data", main_src, entities_file), "r") as ent:
+#                         ents = ent.readlines()
+#                         entities.extend(ents)
+#                         ent_len = len(ents)
+#                     with open(os.path.join("data", main_src, relations_file), "r") as rel:
+#                         rels = rel.readlines()
+#                         relations.extend(rels)
+#                         rel_len = len(relations)
+#                     with open(os.path.join("data", main_src, vocab_file), "r") as voc:
+#                         words.extend(voc.readlines())
+#                     for line in lines:
+#                         pair = json.loads(line)
+#                         for i, ent_id in enumerate(pair["entities"]):
+#                             pair["entities"][i] = ent_id + ent_len
+#                         for i, ent_id in enumerate(pair["subgraph"]["entities"]):
+#                             pair["subgraph"]["entities"][i] = ent_id + ent_len
+#                         for i, path in enumerate(pair["subgraph"]["tuples"]):
+#                             for j, curr_id in enumerate(path):
+#                                 if i % 2 == 0:
+#                                     pair["subgraph"]["tuples"][i][j] = curr_id + ent_len
+#                                 else:
+#                                     pair["subgraph"]["tuples"][i][j] = curr_id + rel_len
+#                         pairs.append(json.dumps(pair) + "\n")
+#                 if src_name != main_src:
+#                     extra_files = [entities_file, relations_file, vocab_file]
+#                     extra_info = [entities, relations, words]
+#                     for file_name, file_info in zip(extra_files, extra_info):
+#                         with open(os.path.join("data", main_src, file_name), "w") as f:
+#                             pass
+#                             #f.writelines(file_info)
+#             dst.writelines(pairs)
+
+# parser = argparse.ArgumentParser()
+# parser.add_argument('--data_name', help='Name of the data to generate')
+# args = parser.parse_args()
+# folder_name = os.path.join("data", args.data_name)
+# synthesize(folder_name=folder_name)
 combine_data()
 
 
