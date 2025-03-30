@@ -162,9 +162,12 @@ class Evaluator:
             batch = valid_data.get_batch(start, end, fact_dropout=0.0, test=True)
             question_dict = valid_data.get_question_dict(batch, start, end)
             save_ppl_files = []
+            ppl_folder = os.path.join("perplexity_scores", self.data_name, data_split)
+            if not os.path.isdir(ppl_folder):
+                os.makedirs(ppl_folder)
+            for idx in range(start, end):
+                save_ppl_files.append(os.path.join(ppl_folder, f"{idx}-{idx+1}.pt"))
             with torch.no_grad():
-                for idx in range(start, end):
-                    save_ppl_files.append(os.path.join("perplexity_scores", self.data_name, data_split, f"{idx}-{idx+1}.pt"))
                 loss, extras, pred_dist, tp_list, correct, recall = self.model(batch[:-1], question_dict, save_ppl_files=save_ppl_files)
                 pred = torch.max(pred_dist, dim=1)[1]
             if self.model_name == 'GraftNet':
