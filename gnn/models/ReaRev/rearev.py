@@ -202,7 +202,7 @@ class ReaRev(BaseModel):
                 url = "https://api.contextual.ai/v1/lmunit"
                 headers = {
                     "accept": "application/json",
-                    "Authorization": "[insert your API key here]",
+                    "Authorization": "Bearer [insert key]",
                     "Content-Type": "application/json"
                 }
                 payload = {
@@ -213,7 +213,7 @@ class ReaRev(BaseModel):
                     )
                 }
                 response = requests.post(url, json=payload, headers=headers)
-                correct[i] = response.score
+                correct[i] = response.json()["score"]
             else:
                 correct[i] = int(prediction in question_dict["answer"][i])
         return correct
@@ -309,12 +309,12 @@ class ReaRev(BaseModel):
                         all_input, all_input_list = self.input_builder.process_input_batch(question_dict)
                         # Only compute when case_valid
                         all_input_list = [inp for i, inp in enumerate(all_input_list) if case_valid[i].item()]
-                        input_master_list.extend(all_input_list[0])
                         curr_perplexity = torch.zeros(question_dict["cand"].shape).to(self.device)
                         if len(all_input_list) > 0:
                             curr_perplexity_valid = self.llm_model.calculate_perplexity(all_input_list, question_dict["answer"])
                             valid_examples = case_valid[:, 0].nonzero(as_tuple=True)[0]
                             curr_perplexity[valid_examples] = curr_perplexity_valid
+                            input_master_list.extend(all_input_list[0])
                         perplexities.append(curr_perplexity)
                         idx += top_k
                     llm_perplexity = torch.cat(perplexities, dim=-1)
@@ -344,12 +344,13 @@ class ReaRev(BaseModel):
         pred_dist = self.dist_history[-1]
         pred = torch.max(pred_dist, dim=1)[1]
         question_dict["cand"] = top_cands
-        correct = self.evaluate_llm(question_dict)#[False for i in range(bsz)] #Ignore for train for sake of timing
+        correct = [0 for i in range(bsz)] #Ignore for train for sake of timing
         if training:
             h1, f1 = self.get_eval_metric(pred_dist, answer_dist)
             tp_list = [h1.tolist(), f1.tolist()]
         else:
             tp_list = None
+            correct = self.evaluate_llm(question_dict, eval_sequence=True)
         return loss, pred, pred_dist, tp_list, correct, recall
 
     

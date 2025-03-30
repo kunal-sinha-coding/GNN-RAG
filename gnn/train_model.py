@@ -42,7 +42,9 @@ class Trainer_KBQA(object):
         self.bsz = self.args['batch_size']
         self.test_batch_size = args['test_batch_size']
         self.data_folder = args['data_folder']
-        self.data_name = self.data_folder#os.path.split(self.data_folder)[-1]
+        self.ppl_folder = os.path.join("perplexity_scores", self.data_folder, "train") 
+        if not os.path.isdir(self.ppl_folder):
+            os.makedirs(self.ppl_folder, exist_ok=True)
         self.fact_drop = args['fact_drop']
         self.device = torch.device('cuda' if args['use_cuda'] else 'cpu')
         self.reset_time = 0
@@ -237,7 +239,7 @@ class Trainer_KBQA(object):
         losses = []
         actor_losses = []
         ent_losses = []
-        num_epoch = self.train_data.num_data // self.args['batch_size']
+        num_epoch = 1#self.train_data.num_data // self.args['batch_size']
         h1_list_all = []
         f1_list_all = []
         correct_all = []
@@ -252,9 +254,11 @@ class Trainer_KBQA(object):
             question_dict = self.train_data.get_question_dict(batch, start, end)
             save_ppl_files = []
             for idx in range(start, end):
-                #TODO: create folder if it does not exist
-                save_ppl_files.append(os.path.join("perplexity_scores", self.data_name, "train", f"{idx}-{idx+1}.pt"))
-            loss, _, _, tp_list, correct, recall = self.model(batch, question_dict, training=True, save_ppl_files=save_ppl_files)
+                save_ppl_files.append(os.path.join(self.ppl_folder, f"{idx}-{idx+1}.pt"))
+            loss, _, _, tp_list, correct, recall = self.model(
+                batch, question_dict, training=True, 
+                save_ppl_files=save_ppl_files
+            )
             # if tp_list is not None:
             h1_list, f1_list = tp_list
             h1_list_all.extend(h1_list)
