@@ -188,8 +188,7 @@ def update_subgraph_and_dicts(pairs, subgraph, entity2id, relation2id, vocab, tu
                     subgraph["tuples"].append(path_ids)
                     path_ids = path_ids[-1:]
 
-def save_subgraph(pairs, subgraph, entity2id, folder_name, qa_file):
-    qa_file = os.path.join(folder_name, qa_file)
+def save_subgraph(pairs, subgraph, entity2id, qa_file):
     with open(qa_file, "w") as f:
         for pair in pairs:
             if "paths" in pair:
@@ -263,16 +262,16 @@ def combine_data(qa_files=["train", "dev"], dst_folder="synth-fin",
                     #Handle the dictionaries
                     subgraph = {"tuples": [], "entities": []}
                     update_subgraph_and_dicts(pairs, subgraph, entity2id, relation2id, vocab)
-                    save_subgraph(pairs, subgraph, entity2id, folder_name, qa_file)
+                    save_subgraph(pairs, subgraph, entity2id, src_file)
                     all_pairs.extend(pairs)
-            dst.writelines(all_pairs)
-    save_dicts(entity2id, relation2id, vocab, folder_name)
+            dst.writelines([json.dumps(pair) + "\n" for pair in all_pairs])
+    save_dicts(entity2id, relation2id, vocab, os.path.join("data", dst_folder))
 
-# parser = argparse.ArgumentParser()
-# parser.add_argument('--data_name', help='Name of the data to generate')
-# args = parser.parse_args()
-# folder_name = os.path.join("data", args.data_name)
-# synthesize(folder_name=folder_name)
+#parser = argparse.ArgumentParser()
+#parser.add_argument('--data_name', help='Name of the data to generate')
+#args = parser.parse_args()
+#folder_name = os.path.join("data", args.data_name)
+#synthesize(folder_name=folder_name)
 combine_data()
 
 
