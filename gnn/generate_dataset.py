@@ -152,12 +152,13 @@ def update_qa_pairs(qa_pairs, response, num_questions, id_num, append=False):
                 qa_pairs[idx] = resp_dict
             idx += 1
 
-def save_qa_pairs(qa_pairs, num_questions, id_num, qa_file, folder_name):
+def save_qa_pairs(qa_pairs, num_questions, id_num, qa_file, folder_name, overwrite=True):
     qa_pairs_batch = qa_pairs[id_num : id_num + num_questions]
     if not os.path.isdir(folder_name):
         os.mkdir(folder_name)
     qa_file = os.path.join(folder_name, qa_file)
-    with open(qa_file, "w") as f:
+    perm = "w" if overwrite else "a"
+    with open(qa_file, perm) as f:
         for pair in qa_pairs_batch:
             if "paths" in pair:
                 f.write(json.dumps(pair) + "\n")
@@ -187,14 +188,9 @@ def update_subgraph_and_dicts(pairs, subgraph, entity2id, relation2id, vocab, tu
                 if len(path_ids) == tuple_len:
                     subgraph["tuples"].append(path_ids)
                     path_ids = path_ids[-1:]
-
-def save_subgraph(pairs, subgraph, entity2id, qa_file):
-    with open(qa_file, "w") as f:
-        for pair in pairs:
-            if "paths" in pair:
-                pair["subgraph"] = subgraph
-                pair["entities"] = list(set([entity2id[path[0]] for path in pair["paths"]]))
-                f.write(json.dumps(pair) + "\n")
+    for i, pair in enumerate(pairs):
+        pairs[i]["subgraph"] = subgraph
+        pairs[i]["entities"] = list(set([entity2id[path[0]] for path in pair["paths"]]))
 
 def save_dicts(entity2id, relation2id, vocab, folder_name,
                 entities_file="entities.txt", relations_file="relations.txt", vocab_file="vocab.txt"):
@@ -211,7 +207,7 @@ def save_dicts(entity2id, relation2id, vocab, folder_name,
         for word in vocab.keys():
             f.write(word + "\n")
 
-def split_data(qa_file, src_file, dst_files, folder_name, keep=.8):
+def split_data(qa_file, src_file, dst_files, folder_name, keep=.9):
     lines = []
     with open(os.path.join(folder_name, qa_file), "r") as f:
         lines = f.readlines()
@@ -220,7 +216,7 @@ def split_data(qa_file, src_file, dst_files, folder_name, keep=.8):
         src.writelines(lines[:num_keep])
     for dst_f in dst_files:
         with open(os.path.join(folder_name, dst_f), "w") as dst:
-            dst.writelines(lines[num_keep])
+            dst.writelines(lines[num_keep:])
 
 def synthesize_step(qa_pairs, num_questions, id_num, num_distractors=1):
     for i in range(num_distractors + 1):
@@ -230,7 +226,7 @@ def synthesize_step(qa_pairs, num_questions, id_num, num_distractors=1):
         generate_qa(curr_pairs, num_questions, curr_id_num)
         generate_paths(curr_pairs, num_questions, curr_id_num)
 
-def synthesize(num_steps=10000, num_questions=10, num_generations=25, qa_file="all", folder_name="synth-fin"):
+def synthesize(num_steps=10000, num_questions=10, num_generations=10, qa_file="all.json", folder_name="fin-cand"):
     qa_pairs = []
     idx = 0
     for i in range(num_steps):
@@ -241,31 +237,40 @@ def synthesize(num_steps=10000, num_questions=10, num_generations=25, qa_file="a
                 num_questions=num_questions, 
                 id_num=id_num
             )
-            save_qa_pairs(qa_pairs, num_questions, id_num, qa_file, folder_name)
+            save_qa_pairs(qa_pairs, num_questions, id_num, qa_file, folder_name, overwrite=(id_num==0))
             idx += 1
         split_data(qa_file, f"train.json", [f"dev.json"], folder_name)
 
-def combine_data(qa_files=["train", "dev"], dst_folder="synth-fin", 
-        src_folders=["synth-fin-0", "synth-fin-1"],
+def combine_data(qa_files=["train", "dev"], dst_folder="fin-cand", 
+        src_folders=None, subgraph_size=20,
         entities_file="entities.txt", relations_file="relations.txt", vocab_file="vocab.txt"):
     entity2id, relation2id, vocab = {}, {}, {}
     #Combine the qa pairs
     for qa_file in qa_files:
-        dst_file = os.path.join("data", dst_folder, f"{qa_file}.json")
+        full_dst_folder = os.path.join("data", dst_folder)
+        if not os.path.isdir(full_dst_folder):
+            os.makedirs(full_dst_folder)
+        dst_file = os.path.join(full_dst_folder, f"{qa_file}.json")
+        if not src_folders:
+            src_folders = [f"{dst_folder}-{i}" for i in range(4)]
         all_pairs = []
         with open(dst_file, "w") as dst:
             dst.write("")
             for src_fold in src_folders:
                 src_file = os.path.join("data", src_fold, f"{qa_file}.json")
                 with open(src_file, "r") as src:
-                    pairs = [json.loads(l) for l in src.readlines()]
+                    lines = list(src.readlines())
                     #Handle the dictionaries
-                    subgraph = {"tuples": [], "entities": []}
-                    update_subgraph_and_dicts(pairs, subgraph, entity2id, relation2id, vocab)
-                    save_subgraph(pairs, subgraph, entity2id, src_file)
-                    all_pairs.extend(pairs)
+                    idx = 0
+                    while idx < len(lines):
+                        subgraph = {"tuples": [], "entities": []}
+                        start, end = idx, idx + subgraph_size
+                        pairs = [json.loads(l) for l in lines[start:end]]
+                        update_subgraph_and_dicts(pairs, subgraph, entity2id, relation2id, vocab)
+                        all_pairs.extend(pairs)
+                        idx += subgraph_size
             dst.writelines([json.dumps(pair) + "\n" for pair in all_pairs])
-    save_dicts(entity2id, relation2id, vocab, os.path.join("data", dst_folder))
+    save_dicts(entity2id, relation2id, vocab, full_dst_folder)
 
 #parser = argparse.ArgumentParser()
 #parser.add_argument('--data_name', help='Name of the data to generate')

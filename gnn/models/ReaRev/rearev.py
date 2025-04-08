@@ -18,6 +18,7 @@ from llm.src.llms.language_models.llama import Llama
 from llm.src.qa_prediction.build_qa_input import PromptBuilder
 import wandb
 import requests
+import time
 
 VERY_SMALL_NUMBER = 1e-10
 VERY_NEG_NUMBER = -100000000000
@@ -42,6 +43,8 @@ class ReaRev(BaseModel):
         self.alg = args['alg']
         assert self.alg == 'bfs'
         self.lm = args['lm']
+        self.llm_output_table_cols = ["iteration", "input", "prediction", "unit_test", "score"]
+        self.llm_output_table = wandb.Table(columns=self.llm_output_table_cols)
         
         self.private_module_def(args, num_entity, num_relation)
 
@@ -192,34 +195,51 @@ class ReaRev(BaseModel):
         cur_loss = torch.sum(tp_loss) / curr_dist.size(0)
         return cur_loss
         
-    def evaluate_llm(self, question_dict, eval_sequence=False):
+    def evaluate_llm(self, question_dict, eval_sequence=False, pass_threshold=3, throttle_time=1, table_name=None):
         all_input, _ = self.input_builder.process_input_batch(question_dict, include_all_paths=True)
         correct = [0 for inp in all_input]
+        scores = [0 for inp in all_input]
         for i, curr_input in enumerate(all_input):
+            start_time = time.time()
             prediction = self.llm_model.generate_sentence(curr_input).strip()
-            groundtruth = question_dict["answer"][i]
+            groundtruth = question_dict["answer"][i][0]
+            unit_test = f"Is the response correct? Groundtruth: {groundtruth}"
             if eval_sequence:
                 url = "https://api.contextual.ai/v1/lmunit"
                 headers = {
                     "accept": "application/json",
-                    "Authorization": "Bearer [insert key]",
+                    "Authorization": "Bearer [INSERT LMUNIT API KEY HERE]",
                     "Content-Type": "application/json"
                 }
                 payload = {
                     "query": question_dict["question"][i],
                     "response": prediction,
-                    "unit_test": (
-                        f'''Does the response explain the following information correctly? {groundtruth}'''
-                    )
+                    "unit_test": unit_test
                 }
+                time_elapsed = time.time() - start_time
+                if time_elapsed < throttle_time:
+                    time.sleep(throttle_time - time_elapsed)
                 response = requests.post(url, json=payload, headers=headers)
-                correct[i] = response.json()["score"]
+                if response.ok:
+                    scores[i] = int(response.json()["score"])
+                    import pdb; pdb.set_trace()
+                    correct[i] = (scores[i] >= pass_threshold)
+                #table_data = self.llm_output_table.data
+                #iteration = table_data[-1][0] + 1 if len(table_data) > 0 else 0
+                #self.llm_output_table.add_data(
+                #    iteration, curr_input, prediction, unit_test, correct[i]
+                #)
+                #self.llm_output_table = wandb.Table(
+                #    columns=self.llm_output_table_cols, data=self.llm_output_table.data
+                #)
+                #if table_name:
+                    #wandb.log({table_name: self.llm_output_table})
             else:
                 correct[i] = int(prediction in question_dict["answer"][i])
-        return correct
-    
-    def forward(self, batch, question_dict, training=False, replug=True, top_k=10, gamma=1e5, 
-                save_ppl_files=[], debug_ppl=False, overwrite_ppl=False):
+        return correct, scores
+ 
+    def forward(self, batch, question_dict, training=False, replug=True, top_k=10, eval_k=2, gamma=1e2, 
+                save_ppl_files=[], debug_ppl=False, overwrite_ppl=False, table_name=None, do_eval=False):
         """
         Forward function: creates instructions and performs GNN reasoning.
         """
@@ -294,8 +314,8 @@ class ReaRev(BaseModel):
         correct_idx = answer_dist.argmax(dim=-1)
         #text_batch["cand"][np.arange(bsz), correct_idx.cpu().numpy()] = [entity[0] for entity in text_batch["a_entity"]]
         candidates = question_dict["cand"]
-        top_indices = sorted_indices[:, -1:]
-        top_cands = candidates[np.arange(bsz)[:, None], top_indices.cpu().numpy()]
+        eval_indices = sorted_indices[:, -eval_k:]
+        eval_cands = candidates[np.arange(bsz)[:, None], eval_indices.cpu().numpy()]
         if replug and question_dict:
             with torch.no_grad():
                 input_master_list = []
@@ -325,6 +345,7 @@ class ReaRev(BaseModel):
                     llm_perplexity = torch.load(save_ppl_files[i]).to(self.device)
                     num_scores = llm_perplexity.size(-1)
                     llm_likelihood[i, :num_scores] = torch.softmax(llm_perplexity * gamma, dim=-1)
+                    import pdb; pdb.set_trace()
                     if debug_ppl:
                         best_ppl_cands = candidates[i, llm_perplexity.argsort(dim=-1)[0, -5:].cpu().numpy()]
                         print(best_ppl_cands)
@@ -343,14 +364,20 @@ class ReaRev(BaseModel):
 
         pred_dist = self.dist_history[-1]
         pred = torch.max(pred_dist, dim=1)[1]
-        question_dict["cand"] = top_cands
+        question_dict["cand"] = eval_cands
         correct = [0 for i in range(bsz)] #Ignore for train for sake of timing
+        scores = [0 for i in range(bsz)]
+        if do_eval:
+            import pdb; pdb.set_trace()
+            correct, scores = self.evaluate_llm(
+                question_dict, eval_sequence=True, table_name=table_name
+            )
         if training:
             h1, f1 = self.get_eval_metric(pred_dist, answer_dist)
             tp_list = [h1.tolist(), f1.tolist()]
         else:
             tp_list = None
-            correct = self.evaluate_llm(question_dict, eval_sequence=True)
-        return loss, pred, pred_dist, tp_list, correct, recall
+            #correct = self.evaluate_llm(question_dict, eval_sequence=True)
+        return loss, pred, pred_dist, tp_list, correct, recall, scores
 
     
