@@ -188,14 +188,9 @@ def update_subgraph_and_dicts(pairs, subgraph, entity2id, relation2id, vocab, tu
                 if len(path_ids) == tuple_len:
                     subgraph["tuples"].append(path_ids)
                     path_ids = path_ids[-1:]
-
-def save_subgraph(pairs, subgraph, entity2id, qa_file):
-    with open(qa_file, "w") as f:
-        for pair in pairs:
-            if "paths" in pair:
-                pair["subgraph"] = subgraph
-                pair["entities"] = list(set([entity2id[path[0]] for path in pair["paths"]]))
-                f.write(json.dumps(pair) + "\n")
+    for i, pair in enumerate(pairs):
+        pairs[i]["subgraph"] = subgraph
+        pairs[i]["entities"] = list(set([entity2id[path[0]] for path in pair["paths"]]))
 
 def save_dicts(entity2id, relation2id, vocab, folder_name,
                 entities_file="entities.txt", relations_file="relations.txt", vocab_file="vocab.txt"):
@@ -247,7 +242,7 @@ def synthesize(num_steps=10000, num_questions=10, num_generations=10, qa_file="a
         split_data(qa_file, f"train.json", [f"dev.json"], folder_name)
 
 def combine_data(qa_files=["train", "dev"], dst_folder="fin-cand", 
-        src_folders=None, subgraph_size=50,
+        src_folders=None, subgraph_size=20,
         entities_file="entities.txt", relations_file="relations.txt", vocab_file="vocab.txt"):
     entity2id, relation2id, vocab = {}, {}, {}
     #Combine the qa pairs
@@ -269,10 +264,9 @@ def combine_data(qa_files=["train", "dev"], dst_folder="fin-cand",
                     idx = 0
                     while idx < len(lines):
                         subgraph = {"tuples": [], "entities": []}
-                        start, end = idx * subgraph_size, (idx + 1) * subgraph_size
+                        start, end = idx, idx + subgraph_size
                         pairs = [json.loads(l) for l in lines[start:end]]
                         update_subgraph_and_dicts(pairs, subgraph, entity2id, relation2id, vocab)
-                        save_subgraph(pairs, subgraph, entity2id, src_file)
                         all_pairs.extend(pairs)
                         idx += subgraph_size
             dst.writelines([json.dumps(pair) + "\n" for pair in all_pairs])
