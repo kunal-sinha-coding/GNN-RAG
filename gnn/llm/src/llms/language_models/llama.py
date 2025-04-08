@@ -138,7 +138,6 @@ class Llama(BaseLanguageModel):
         #ce_loss = ce_loss.sum(dim=-1) / z
         # Get perplexity and likelihood
         llm_perplexity = -ce_loss.exp() # Take negative because lower ppl is better
-        print("Best ppl score: ", ce_loss.exp().sort()[0][0])
         return llm_perplexity.reshape((bsz, k))
     
     def tokenize(self, text):
