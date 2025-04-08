@@ -208,7 +208,7 @@ class ReaRev(BaseModel):
                 url = "https://api.contextual.ai/v1/lmunit"
                 headers = {
                     "accept": "application/json",
-                    "Authorization": "Bearer ***REMOVED***",
+                    "Authorization": "Bearer key-9jCW5QhGqW9qnnJMHaJ2DfV0vFOWo1LZtPVziDIQJRoalZD0o",
                     "Content-Type": "application/json"
                 }
                 payload = {
