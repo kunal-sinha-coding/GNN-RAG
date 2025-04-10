@@ -560,13 +560,14 @@ class BasicDataLoader(object):
                     for h, r, t in v["tuples"]:
                         text_tuples.append([self.id2entity[h], self.id2relation[r], self.id2entity[t]])
                     question_dict["graph"].append(text_tuples)
+                    question_dict["cand"].append([self.id2entity[ent_id] for ent_id in v["entities"]])
                 elif k == "entities":
                     question_dict["q_entity"].append([self.id2entity[ent_id] for ent_id in v])
                 elif k == "answer":
                     question_dict["answer"].append([v])
                 else:
                     question_dict[k].append(v)
-        question_dict["cand"] = self.get_candidates(batch)
+        question_dict["cand"] = self.get_candidates(batch) 
         return question_dict
 
     def _build_global2local_entity_maps(self):

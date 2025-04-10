@@ -148,7 +148,7 @@ class Evaluator:
         eval_loss, eval_acc, eval_max_acc = [], [], []
         f1s, hits, ems,  precisions, recalls, corrects, scores_all = [], [], [], [], [], [], []
         valid_data.reset_batches(is_sequential=True)
-        num_epoch = 1#math.ceil(valid_data.num_data / test_batch_size)
+        num_epoch = math.ceil(valid_data.num_data / test_batch_size)
         if write_info and self.file_write is None:
             filename = os.path.join(self.args['checkpoint_dir'],
                                     "{}_test.info".format(self.args['experiment_name']))
@@ -236,7 +236,7 @@ class Evaluator:
                 precisions.append(precision)
                 recalls.append(recall)
                 corrects.extend(correct)
-                scores_all.extend(scores_all)
+                scores_all.extend(scores)
         print('evaluation.......')
         print('how many eval samples......', len(f1s))
         # print('avg_f1', np.mean(f1s))
@@ -246,6 +246,7 @@ class Evaluator:
         print('avg_precision', np.mean(precisions))
         print('avg_recall', np.mean(recalls))
         wandb.log({f"{data_split.title()} loss": np.mean(eval_loss)})
+        import pdb; pdb.set_trace()
         wandb.log({f"{data_split.title()} scores >= 1": (np.array(scores_all) >= 1).mean()})
         wandb.log({f"{data_split.title()} scores >= 2": (np.array(scores_all) >= 2).mean()})
         wandb.log({f"{data_split.title()} scores >= 3": (np.array(scores_all) >= 3).mean()})

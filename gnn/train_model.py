@@ -42,7 +42,8 @@ class Trainer_KBQA(object):
         self.bsz = self.args['batch_size']
         self.test_batch_size = args['test_batch_size']
         self.data_folder = args['data_folder']
-        self.ppl_folder = os.path.join("perplexity_scores", self.data_folder, "train") 
+        self.ppl_folder = os.path.join("perplexity_scores", self.data_folder, "train")
+        self.skip_retrieval = args['skip_retrieval']
         if not os.path.isdir(self.ppl_folder):
             os.makedirs(self.ppl_folder, exist_ok=True)
         self.fact_drop = args['fact_drop']
@@ -153,10 +154,10 @@ class Trainer_KBQA(object):
             wandb.log({"Train recall@2": (recall_all <= 1).mean()})
             wandb.log({"Train recall@3": (recall_all <= 2).mean()})
             wandb.log({"Train recall@4": (recall_all <= 3).mean()})
-            wandb.log({"Train scores >= 1": (scores_all >= 1).mean() * 574}) #ToDo: temporary for estimating based on 5 batches
-            wandb.log({"Train scores >= 2": (scores_all >= 2).mean() * 574})
-            wandb.log({"Train scores >= 3": (scores_all >= 3).mean() * 574})
-            wandb.log({"Train scores >= 4": (scores_all >= 4).mean() * 574})
+            wandb.log({"Train scores >= 1": (scores_all >= 1).mean()})
+            wandb.log({"Train scores >= 2": (scores_all >= 2).mean()})
+            wandb.log({"Train scores >= 3": (scores_all >= 3).mean()})
+            wandb.log({"Train scores >= 4": (scores_all >= 4).mean()})
             self.logger.info("Epoch: {}, loss : {:.4f}, time: {}".format(epoch + 1, loss, time.time() - st))
             self.logger.info("Training h1 : {:.4f}, f1 : {:.4f}".format(np.mean(h1_list_all), np.mean(f1_list_all)))
             
@@ -238,7 +239,7 @@ class Trainer_KBQA(object):
         test_f1, test_hits, test_ems, test_acc = self.evaluate(self.test_data, self.test_batch_size, write_info=True)
         self.logger.info("TEST F1: {:.4f}, H1: {:.4f}, EM {:.4f}".format(test_f1, test_hits, test_ems))
 
-    def train_epoch(self, table_name=None, do_eval=False):
+    def train_epoch(self, table_name=None, do_eval=True):
         self.model.train()
         self.train_data.reset_batches(is_sequential=True)
         losses = []
@@ -264,7 +265,7 @@ class Trainer_KBQA(object):
             loss, _, _, tp_list, correct, recall, scores = self.model(
                 batch, question_dict, training=True, 
                 save_ppl_files=save_ppl_files, table_name=table_name, 
-                do_eval=(do_eval and iteration >= num_epoch - 1)
+                do_eval=False, skip_retrieval=self.skip_retrieval
             )
             # if tp_list is not None:
             h1_list, f1_list = tp_list
