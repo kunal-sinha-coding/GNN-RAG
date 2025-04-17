@@ -168,7 +168,9 @@ class Evaluator:
             for idx in range(start, end):
                 save_ppl_files.append(os.path.join(ppl_folder, f"{idx}-{idx+1}.pt"))
             with torch.no_grad():
-                loss, extras, pred_dist, tp_list, correct, recall, scores = self.model(batch[:-1], question_dict, save_ppl_files=save_ppl_files)
+                loss, extras, pred_dist, tp_list, correct, recall, scores = self.model(
+                    batch[:-1], question_dict, save_ppl_files=save_ppl_files,
+                )
                 pred = torch.max(pred_dist, dim=1)[1]
             if self.model_name == 'GraftNet':
                 local_entity, query_entities, _, _, query_text, _, \
@@ -246,7 +248,6 @@ class Evaluator:
         print('avg_precision', np.mean(precisions))
         print('avg_recall', np.mean(recalls))
         wandb.log({f"{data_split.title()} loss": np.mean(eval_loss)})
-        import pdb; pdb.set_trace()
         wandb.log({f"{data_split.title()} scores >= 1": (np.array(scores_all) >= 1).mean()})
         wandb.log({f"{data_split.title()} scores >= 2": (np.array(scores_all) >= 2).mean()})
         wandb.log({f"{data_split.title()} scores >= 3": (np.array(scores_all) >= 3).mean()})

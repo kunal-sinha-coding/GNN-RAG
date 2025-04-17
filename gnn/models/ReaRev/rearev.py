@@ -196,9 +196,12 @@ class ReaRev(BaseModel):
         return cur_loss
         
     def evaluate_llm(self, question_dict, eval_sequence=False, 
-        pass_threshold=4, throttle_time=1, table_name=None, skip_retrieval=True):
+        pass_threshold=4, throttle_time=1, table_name=None, skip_retrieval=True, pd=[]):
         default_prompt = "Please answer the given question in one sentence." 
         all_input = [f"{default_prompt} {quest}" for quest in question_dict["question"]]
+        #for i in range(len(question_dict["cand"])):
+            #pred_mask = (pd[i, -10:] < .03).cpu().numpy()
+            #question_dict["cand"][i][pred_mask] = ""
         if not skip_retrieval:
             all_input, _ = self.input_builder.process_input_batch(question_dict, include_all_paths=True)
         correct = [0 for inp in all_input]
@@ -228,9 +231,8 @@ class ReaRev(BaseModel):
                 if response.ok:
                     scores[i] = response.json()["score"]
                     correct[i] = (scores[i] >= pass_threshold)
-                    print(prediction)
-                    print(groundtruth)
-                    import pdb; pdb.set_trace()
+                    #print(payload)
+                    #print(scores[i])
                 #table_data = self.llm_output_table.data
                 #iteration = table_data[-1][0] + 1 if len(table_data) > 0 else 0
                 #self.llm_output_table.add_data(
@@ -245,7 +247,7 @@ class ReaRev(BaseModel):
                 correct[i] = int(prediction in question_dict["answer"][i])
         return correct, scores
  
-    def forward(self, batch, question_dict, training=False, replug=True, top_k=5, ppl_bsz=10, gamma=1e5, 
+    def forward(self, batch, question_dict, training=False, replug=True, top_k=10, eval_k=10, ppl_bsz=10, gamma=1, 
                 save_ppl_files=[], debug_ppl=False, overwrite_ppl=False, table_name=None, do_eval=True, skip_retrieval=False):
         """
         Forward function: creates instructions and performs GNN reasoning.
@@ -352,7 +354,9 @@ class ReaRev(BaseModel):
                     for i in range(bsz):
                         llm_perplexity = torch.load(save_ppl_files[i]).to(self.device)
                         num_scores = llm_perplexity.size(-1)
-                        llm_likelihood[i, :num_scores] = torch.softmax(llm_perplexity * gamma, dim=-1)
+                        #llm_likelihood[i, :num_scores] = torch.softmax(llm_perplexity * gamma, dim=-1)
+                        ppl_sorted, ppl_indices_sorted = llm_perplexity[0].sort()
+                        llm_likelihood[i, ppl_indices_sorted[-top_k:]] = torch.softmax(ppl_sorted[-top_k:] * gamma, dim=-1)
                         if debug_ppl and do_eval:
                             best_ppl_cands = candidates[i, llm_perplexity.argsort(dim=-1)[0, -5:].cpu().numpy()]
                             pred_cands = candidates[i, pred_dist.argsort(dim=-1)[i, -5:].cpu().numpy()]
@@ -372,7 +376,7 @@ class ReaRev(BaseModel):
         scores = [0 for i in range(bsz)]
         if do_eval:
             correct, scores = self.evaluate_llm(
-                question_dict, eval_sequence=True, table_name=table_name, skip_retrieval=skip_retrieval
+                question_dict, eval_sequence=True, table_name=table_name, skip_retrieval=skip_retrieval, pd=pred_dist.sort(dim=-1)[0]
             )
         if training:
             h1, f1 = self.get_eval_metric(pred_dist, answer_dist)

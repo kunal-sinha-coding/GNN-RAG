@@ -274,10 +274,11 @@ class Trainer_KBQA(object):
             correct_all.extend(correct)
             recall_all.append(recall)
             scores_all.extend(scores)
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_([param for name, param in self.model.named_parameters()],
-                                           self.args['gradient_clip'])
-            self.optim_model.step()
+            if not self.skip_retrieval:
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_([param for name, param in self.model.named_parameters()],
+                                            self.args['gradient_clip'])
+                self.optim_model.step()
             losses.append(loss.item())
             wandb.log({"Train epoch loss": loss.item()})
             wandb.log({"Train epoch acc": np.mean(correct_all)})
