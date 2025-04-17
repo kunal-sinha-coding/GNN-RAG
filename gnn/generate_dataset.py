@@ -15,12 +15,13 @@ max_new_tokens = {
     "Qwen/Qwen2.5-7B-Instruct": 2048,
     "meta-llama/Llama-2-7b-chat-hf": 2048
 }
-#model = AutoModelForCausalLM.from_pretrained(
-#   model_name,
-#   cache_dir=cache_dir,
-#   torch_dtype=torch.float16
-#).to(device)
+model = AutoModelForCausalLM.from_pretrained(
+  model_name,
+  cache_dir=cache_dir,
+  torch_dtype=torch.float16
+).to(device)
 
+DOCUMENTS_FOLDER = "grounding_docs"
 LLAMA_PROMPT = (
     '''
     [INST] <<SYS>>
@@ -62,13 +63,17 @@ FEWSHOT_PATHS = [
 PROMPTS = {
     "qa": (
         '''
-        Generate {num_questions} question-answer pairs.
-        These are questions a person could ask regarding tech companies' finances.
+        Document: 
+        {grounding_doc}
+        Task:
+        Generate {num_questions} questions that this document would be helpful for answering.
         Each question requires synthesizing multiple different pieces of information.
         Each answer is 1 sentence long. 
         Here is an example of the correct format:
         {fewshot_qa}
         The id field is an integer starting at {id_num} and incrementing by 1 onwards.
+        Questions:
+        {previous_questions}
         '''
     ),
     "paths": (
@@ -111,11 +116,14 @@ def get_json(string):
     except:
         return None
 
-def generate_qa(qa_pairs, num_questions, id_num):
+def generate_qa(qa_pairs, num_questions, id_num, grounding_doc):
+    previous_questions = "\n".join([json.dumps(pair) for pair in qa_pairs])
     response = generate(PROMPTS["qa"].format(
         num_questions=num_questions,
         id_num=id_num, 
         fewshot_qa=json.dumps(FEWSHOT_QA),
+        grounding_doc=grounding_doc,
+        previous_questions=previous_questions
     ))
     update_qa_pairs(qa_pairs, response, num_questions, id_num, append=True)
 
@@ -218,24 +226,26 @@ def split_data(qa_file, src_file, dst_files, folder_name, keep=.9):
         with open(os.path.join(folder_name, dst_f), "w") as dst:
             dst.writelines(lines[num_keep:])
 
-def synthesize_step(qa_pairs, num_questions, id_num, num_distractors=1):
+def synthesize_step(qa_pairs, num_questions, id_num, grounding_doc, num_distractors=1):
     for i in range(num_distractors + 1):
         curr_pairs, curr_id_num = [], 0
         if i == 0:
             curr_pairs, curr_id_num = qa_pairs, id_num
-        generate_qa(curr_pairs, num_questions, curr_id_num)
+        generate_qa(curr_pairs, num_questions, curr_id_num, grounding_doc)
         generate_paths(curr_pairs, num_questions, curr_id_num)
 
 def synthesize(num_steps=10000, num_questions=10, num_generations=10, qa_file="all.json", folder_name="fin-cand"):
-    qa_pairs = []
     idx = 0
     for i in range(num_steps):
+        qa_pairs = []
+        grounding_doc = os.path.join(DOCUMENTS_FOLDER, f"{i}.txt")
         for j in tqdm(range(num_generations), desc=f"Generating data"):
             id_num = idx * num_questions
             synthesize_step(
                 qa_pairs,
                 num_questions=num_questions, 
-                id_num=id_num
+                id_num=id_num,
+                grounding_doc=grounding_doc
             )
             save_qa_pairs(qa_pairs, num_questions, id_num, qa_file, folder_name, overwrite=(id_num==0))
             idx += 1
@@ -272,11 +282,11 @@ def combine_data(qa_files=["train", "dev"], dst_folder="fin-cand",
             dst.writelines([json.dumps(pair) + "\n" for pair in all_pairs])
     save_dicts(entity2id, relation2id, vocab, full_dst_folder)
 
-#parser = argparse.ArgumentParser()
-#parser.add_argument('--data_name', help='Name of the data to generate')
-#args = parser.parse_args()
-#folder_name = os.path.join("data", args.data_name)
-#synthesize(folder_name=folder_name)
-combine_data()
+parser = argparse.ArgumentParser()
+parser.add_argument('--data_name', help='Name of the data to generate')
+args = parser.parse_args()
+folder_name = os.path.join("data", args.data_name)
+synthesize(folder_name=folder_name)
+# combine_data()
 
 
