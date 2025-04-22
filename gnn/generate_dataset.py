@@ -116,8 +116,10 @@ def get_json(string):
     except:
         return None
 
-def generate_qa(qa_pairs, num_questions, id_num, grounding_doc):
-    previous_questions = "\n".join([json.dumps(pair) for pair in qa_pairs])
+def generate_qa(qa_pairs, num_questions, id_num, grounding_doc_file, previous_questions):
+    grounding_doc = ""
+    with open(grounding_doc_file, "r") as f:
+        grounding_doc = f.read()
     response = generate(PROMPTS["qa"].format(
         num_questions=num_questions,
         id_num=id_num, 
@@ -226,26 +228,27 @@ def split_data(qa_file, src_file, dst_files, folder_name, keep=.9):
         with open(os.path.join(folder_name, dst_f), "w") as dst:
             dst.writelines(lines[num_keep:])
 
-def synthesize_step(qa_pairs, num_questions, id_num, grounding_doc, num_distractors=1):
+def synthesize_step(qa_pairs, num_questions, id_num, grounding_doc_file, num_distractors=1):
+    previous_questions = "\n".join([json.dumps(pair) for pair in qa_pairs])
     for i in range(num_distractors + 1):
         curr_pairs, curr_id_num = [], 0
         if i == 0:
             curr_pairs, curr_id_num = qa_pairs, id_num
-        generate_qa(curr_pairs, num_questions, curr_id_num, grounding_doc)
+        generate_qa(curr_pairs, num_questions, curr_id_num, grounding_doc_file, previous_questions)
         generate_paths(curr_pairs, num_questions, curr_id_num)
 
-def synthesize(num_steps=10000, num_questions=10, num_generations=10, qa_file="all.json", folder_name="fin-cand"):
+def synthesize(num_steps=10000, num_questions=10, num_generations=5, qa_file="all.json", folder_name="fin-cand"):
     idx = 0
     for i in range(num_steps):
         qa_pairs = []
-        grounding_doc = os.path.join(DOCUMENTS_FOLDER, f"{i}.txt")
+        grounding_doc_file = os.path.join(DOCUMENTS_FOLDER, f"{i}.txt")
         for j in tqdm(range(num_generations), desc=f"Generating data"):
             id_num = idx * num_questions
             synthesize_step(
                 qa_pairs,
                 num_questions=num_questions, 
                 id_num=id_num,
-                grounding_doc=grounding_doc
+                grounding_doc_file=grounding_doc_file
             )
             save_qa_pairs(qa_pairs, num_questions, id_num, qa_file, folder_name, overwrite=(id_num==0))
             idx += 1

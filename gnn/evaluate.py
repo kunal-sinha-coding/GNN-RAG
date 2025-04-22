@@ -248,6 +248,7 @@ class Evaluator:
         print('avg_precision', np.mean(precisions))
         print('avg_recall', np.mean(recalls))
         wandb.log({f"{data_split.title()} loss": np.mean(eval_loss)})
+        wandb.log({f"{data_split.title()} average score": np.mean(corrects)})
         wandb.log({f"{data_split.title()} scores >= 1": (np.array(scores_all) >= 1).mean()})
         wandb.log({f"{data_split.title()} scores >= 2": (np.array(scores_all) >= 2).mean()})
         wandb.log({f"{data_split.title()} scores >= 3": (np.array(scores_all) >= 3).mean()})

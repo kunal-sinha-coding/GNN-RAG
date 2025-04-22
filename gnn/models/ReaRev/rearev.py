@@ -196,13 +196,13 @@ class ReaRev(BaseModel):
         return cur_loss
         
     def evaluate_llm(self, question_dict, eval_sequence=False, 
-        pass_threshold=4, throttle_time=1, table_name=None, skip_retrieval=True, pd=[]):
+        throttle_time=1, table_name=None, include_reasoning_paths=True, pd=[]):
         default_prompt = "Please answer the given question in one sentence." 
         all_input = [f"{default_prompt} {quest}" for quest in question_dict["question"]]
         #for i in range(len(question_dict["cand"])):
             #pred_mask = (pd[i, -10:] < .03).cpu().numpy()
             #question_dict["cand"][i][pred_mask] = ""
-        if not skip_retrieval:
+        if include_reasoning_paths:
             all_input, _ = self.input_builder.process_input_batch(question_dict, include_all_paths=True)
         correct = [0 for inp in all_input]
         scores = [0 for inp in all_input]
@@ -230,7 +230,7 @@ class ReaRev(BaseModel):
                 response = requests.post(url, json=payload, headers=headers)
                 if response.ok:
                     scores[i] = response.json()["score"]
-                    correct[i] = (scores[i] >= pass_threshold)
+                    correct[i] = scores[i]
                     #print(payload)
                     #print(scores[i])
                 #table_data = self.llm_output_table.data
@@ -371,12 +371,12 @@ class ReaRev(BaseModel):
 
         pred_dist = self.dist_history[-1]
         pred = torch.max(pred_dist, dim=1)[1]
-        question_dict["cand"] = top_cands
+        question_dict["cand"] = top_cands # To run 'full-subgraph', just comment this out; to run llm-only, just pass in the include_reasoning_paths flag
         correct = [0 for i in range(bsz)]
         scores = [0 for i in range(bsz)]
         if do_eval:
             correct, scores = self.evaluate_llm(
-                question_dict, eval_sequence=True, table_name=table_name, skip_retrieval=skip_retrieval, pd=pred_dist.sort(dim=-1)[0]
+                question_dict, eval_sequence=True, table_name=table_name, pd=pred_dist.sort(dim=-1)[0]
             )
         if training:
             h1, f1 = self.get_eval_metric(pred_dist, answer_dist)

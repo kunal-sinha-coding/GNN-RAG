@@ -1,4 +1,3 @@
-
 python3 main.py ReaRev --entity_dim 50 --num_epoch 200 --batch_size 8  --eval_every 1 --lm relbert --num_iter 3 --num_ins 3 --num_gnn 4 --name fin-cand --experiment_name fin-cand --data_folder data/fin-cand/ #--warmup_epoch 80
 ###ReaRev+SBERT training
 # --load_experiment relbert-full_cwq-rearev-final.ckpt
