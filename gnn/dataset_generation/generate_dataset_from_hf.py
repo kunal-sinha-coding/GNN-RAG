@@ -82,6 +82,15 @@ PROMPTS = {
         The question-answer pairs are provided below.
         '''
     ),
+    "distractors": (
+        '''
+        On each line is a list of paths. Each path represents a path in a financial knowledge graph.:
+        {previous_paths}
+        For each list, output a new path in the same format. Only output the new path, then output {eos_token}.
+        Each path connects entities with relations and can be of varying lengths.
+        Each path starts with an entity, alternates between entities and relations, then ends with an entity. 
+        '''
+    ),
 }
 
 def get_data(data_name, data_split, batch_size):
@@ -98,8 +107,9 @@ def generate(prompt, context=""):
         messages = [
             {"role": "system", "content": "You are Qwen, created by Alibaba Cloud. You are a helpful assistant."},
             {"role": "user", "content": prompt},
-            {"role": "user", "content": context}
         ]
+        if context:
+            messages.append({"role": "user", "content": context})
         llm_prompt = [tokenizer.apply_chat_template(
             messages,
             tokenize=False,
@@ -111,13 +121,24 @@ def generate(prompt, context=""):
     response = tokenizer.decode(outputs[0][inputs_len:], skip_special_tokens=True)
     return response
 
-def generate_paths(qa_pairs):
-    qa_pairs_str = "Question-answer pairs:\n" + "\n".join([json.dumps(pair) for pair in qa_pairs])
+def generate_paths(pairs):
+    pairs_str = "Question-answer pairs:\n" + "\n".join([json.dumps(pair) for pair in pairs])
+    fewshot_paths = f"{EOS_TOKEN}\n".join([f"id: {i}, paths: {str(paths)}" for i, paths in enumerate(FEWSHOT_PATHS)])
     response = generate(PROMPTS["paths"].format(
-        fewshot_paths=f"{EOS_TOKEN}\n".join([f"id: {i}, paths: {str(paths)}" for i, paths in enumerate(FEWSHOT_PATHS)]),
+        fewshot_paths=fewshot_paths,
         eos_token=EOS_TOKEN
-    ), context=qa_pairs_str)
-    updated_pairs = format_paths(response, qa_pairs)
+    ), context=pairs_str)
+    updated_pairs = format_paths(response, pairs)
+    return updated_pairs
+
+def generate_distractors(pairs):
+    previous_paths = [ pair["paths"] for pair in pairs ]
+    previous_paths_format = f"{EOS_TOKEN}\n".join([f"id: {i}, paths: {str(path)}" for i, path in enumerate(previous_paths)])
+    response = generate(PROMPTS["distractors"].format(
+        previous_paths=previous_paths_format,
+        eos_token=EOS_TOKEN
+    ))
+    updated_pairs = format_paths(response, pairs)
     return updated_pairs
 
 def pathstr_to_list(pathstr):
@@ -147,7 +168,9 @@ def format_paths(response, qa_pairs):
             my_paths = pathstr_to_list(pathstr)
             if my_paths:
                 try:
-                    updated_pairs[idx]["paths"] = my_paths
+                    if "paths" not in updated_pairs[idx]:
+                        updated_pairs[idx] = []
+                    updated_pairs[idx]["paths"].extend(my_paths)
                 except:
                     import pdb; pdb.set_trace()
             else:
@@ -199,14 +222,6 @@ def save_dicts(entity2id, relation2id, vocab, folder_name,
         for word in vocab.keys():
             f.write(word + "\n")
 
-def synthesize_step(qa_pairs, num_questions, id_num, num_distractors=1):
-    for i in range(num_distractors + 1):
-        curr_pairs, curr_id_num = [], 0
-        if i == 0:
-            curr_pairs, curr_id_num = qa_pairs, id_num
-        generate_paths(curr_pairs, num_questions, curr_id_num)
-    return
-
 def get_qa_pairs(batch, id_num):
     qa_pairs = [
         {"id": id_num + i, "question": batch["question"][i], "answer": batch["answer"][i]}
@@ -232,9 +247,11 @@ def synthesize(data_name, batch_size=16):
         id_num = 0
         num_batches = DATA_SIZES[data_name][data_split] // batch_size
         for batch in tqdm(data, desc=f"Generating {data_split}", total=num_batches):
-            qa_pairs = get_qa_pairs(batch, id_num)
-            updated_pairs = generate_paths(qa_pairs)
-            save_pairs(updated_pairs, data_name, data_split, append=(id_num > 0))
+            pairs = get_qa_pairs(batch, id_num)
+            path_pairs = generate_paths(pairs)
+            import pdb; pdb.set_trace()
+            path_dist_pairs = generate_distractors(path_pairs)
+            save_pairs(path_dist_pairs, data_name, data_split, append=(id_num > 0))
             id_num += batch_size
 
 def combine_data(qa_files=["train", "dev"], dst_folder="fin-cand", 
