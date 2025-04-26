@@ -6,7 +6,9 @@ import os
 from tqdm import tqdm
 import re
 import argparse
+import ast
 from datasets import load_dataset
+from tqdm import tqdm
 
 model_name = "Qwen/Qwen2.5-7B-Instruct"
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -22,6 +24,15 @@ model = AutoModelForCausalLM.from_pretrained(
   torch_dtype=torch.float16
 ).to(device)
 
+DATA_SIZES = {
+    "dreamerdeo/finqa": {
+        "train": 6250,
+        "validation": 883 
+    },
+    "PatronusAI/financebench": {
+        "train": 150,
+    } 
+}
 LLAMA_PROMPT = (
     '''
     [INST] <<SYS>>
@@ -45,55 +56,40 @@ FEWSHOT_QA = [
     }
 ]
 FEWSHOT_PATHS = [
-    {
-        "paths": [
-            ["TSLA", "relation.announced_partnership", "Toyota", "relation.during_time_period", "Q4 FY25"],
-            ["TSLA Toyota partnership", "relation.affects_revenue", "Asia-Pacific region"]
-        ]
-    },
-    {
-        "paths": [ 
-            ["NVIDIA", "relation.has_business_segment", "Data Center", "relation.had_Q4FY25_revenue", "$35.6 billion"],
-            ["NVIDIA", "relation.has_business_segment", "Data Center", "relation.had_YoY_growth_in_Q4FY25", "93%"],
-            ["NVIDIA", "relation.produces", "Blackwell AI supercomputers", "relation.achieved_sales_in_Q4Y25", "billions of dollars"]
-        ]
-    }
+    [
+        ["TSLA", "relation.announced_partnership", "Toyota", "relation.during_time_period", "Q4 FY25"],
+        ["TSLA Toyota partnership", "relation.affects_revenue", "Asia-Pacific region"]
+    ],
+    [ 
+        ["NVIDIA", "relation.has_business_segment", "Data Center", "relation.had_Q4FY25_revenue", "$35.6 billion"],
+        ["NVIDIA", "relation.has_business_segment", "Data Center", "relation.had_YoY_growth_in_Q4FY25", "93%"],
+        ["NVIDIA", "relation.produces", "Blackwell AI supercomputers", "relation.achieved_sales_in_Q4Y25", "billions of dollars"]
+    ]
 ]
+EOS_TOKEN = "[END]"
 PROMPTS = {
-    "qa": (
-        '''
-        Document: 
-        {grounding_doc}
-        Task:
-        Generate {num_questions} questions that this document would be helpful for answering.
-        Each question requires synthesizing multiple different pieces of information.
-        Each answer is 1 sentence long. 
-        Here is an example of the correct format:
-        {fewshot_qa}
-        The id field is an integer starting at {id_num} and incrementing by 1 onwards.
-        Questions:
-        {previous_questions}
-        '''
-    ),
     "paths": (
         '''
-        Output the dictionaries below with a new field added to each called \"paths\".
-        This field contains a list of reasoning paths in a knowledge graph that could answer the question.
+        Image we have a knowledge graph containing financial information.
+        For each question-answer pair, output a list of paths then output {eos_token}.
+        Each path is a path in the knowledge graph that could answer the question.
         Each path connects entities with relations and can be of varying lengths.
-        Each dictionary can contain one or more paths.
-        Keep everything else in the dictionary the same except for the new field.
-        Here is an example of the correct format. The path alternates between entities and relations:
-        {fewshot_qa_paths}
-        Only output the new dictionaries.
+        Each path starts with an entity, alternates between entities and relations, then ends with an entity. 
+        Each question-answer pair can correspond to one or more paths.
+        After each list of paths for a question-answer pair, you MUST output {eos_token}.
+        Here is an example of the correct format:
+        {fewshot_paths}
+        The question-answer pairs are provided below.
         '''
     ),
 }
 
-def get_data(data_name, data_split, batch_size=16):
+def get_data(data_name, data_split, batch_size):
     data = load_dataset(data_name, streaming=True, split=data_split)
     def group_batch(batch):
         return {k: [v] for k, v in batch.items()}
     data = data.map(group_batch, batched=True, batch_size=batch_size)
+    return data
 
 def generate(prompt, context=""):
     if "llama" in model_name.lower():
@@ -115,21 +111,49 @@ def generate(prompt, context=""):
     response = tokenizer.decode(outputs[0][inputs_len:], skip_special_tokens=True)
     return response
 
-def get_json(string):
+def generate_paths(qa_pairs):
+    qa_pairs_str = "Question-answer pairs:\n" + "\n".join([json.dumps(pair) for pair in qa_pairs])
+    response = generate(PROMPTS["paths"].format(
+        fewshot_paths=f"{EOS_TOKEN}\n".join([f"id: {i}, paths: {str(paths)}" for i, paths in enumerate(FEWSHOT_PATHS)]),
+        eos_token=EOS_TOKEN
+    ), context=qa_pairs_str)
+    updated_pairs = format_paths(response, qa_pairs)
+    return updated_pairs
+
+def pathstr_to_list(pathstr):
     try:
-        return json.loads(string)
+        return ast.literal_eval(pathstr)
+    except:
+        pass
+    try:
+        # Sometimes extra [ in front
+        return ast.literal_eval(pathstr[1:])
+    except:
+        pass
+    try:
+        # Handle last example ending in ]]]
+        return ast.literal_eval(pathstr[:-1])
     except:
         return None
 
-def generate_paths(qa_pairs, num_questions, id_num):
-    qa_pairs_batch = qa_pairs[id_num : id_num + num_questions]
-    qa_pairs_str = "Dictionary:\n" + "\n".join([json.dumps(pair) for pair in qa_pairs_batch])
-    fewshot_qa_paths = [
-        {**qa, **paths} for qa, paths in zip(FEWSHOT_QA, FEWSHOT_PATHS)
-    ]
-    response = generate(PROMPTS["paths"].format(
-        fewshot_qa_paths=json.dumps(fewshot_qa_paths),
-    ), context=qa_pairs_str)
+def format_paths(response, qa_pairs):
+    updated_pairs = qa_pairs
+    idx = 0
+    for i, resp in enumerate(response.split(EOS_TOKEN)):
+        if "[" in resp and "]" in resp:
+            start = resp.index("[")
+            end = len(resp) - resp[::-1].index("]")
+            pathstr = resp[start:end]
+            my_paths = pathstr_to_list(pathstr)
+            if my_paths:
+                try:
+                    updated_pairs[idx]["paths"] = my_paths
+                except:
+                    import pdb; pdb.set_trace()
+            else:
+                print(f"Failed on the following: {pathstr}")
+            idx += 1
+    return updated_pairs
 
 def update_subgraph_and_dicts(pairs, subgraph, entity2id, relation2id, vocab, tuple_len=3):
     for pair in pairs:
@@ -175,32 +199,46 @@ def save_dicts(entity2id, relation2id, vocab, folder_name,
         for word in vocab.keys():
             f.write(word + "\n")
 
-def split_data(qa_file, src_file, dst_files, folder_name, keep=.9):
-    lines = []
-    with open(os.path.join(folder_name, qa_file), "r") as f:
-        lines = f.readlines()
-    num_keep = int(keep * len(lines))
-    with open(os.path.join(folder_name, src_file), "w") as src:
-        src.writelines(lines[:num_keep])
-    for dst_f in dst_files:
-        with open(os.path.join(folder_name, dst_f), "w") as dst:
-            dst.writelines(lines[num_keep:])
-
 def synthesize_step(qa_pairs, num_questions, id_num, num_distractors=1):
     for i in range(num_distractors + 1):
         curr_pairs, curr_id_num = [], 0
         if i == 0:
             curr_pairs, curr_id_num = qa_pairs, id_num
         generate_paths(curr_pairs, num_questions, curr_id_num)
+    return
 
-def synthesize(data_name, num_steps=10000, num_questions=10, num_generations=5, qa_file="all.json"):
-    for data_split in ["train", "dev"]:
-        data = get_data(data_name, data_split)
-        for batch in data:
-            import pdb; pdb.set_trace()
+def get_qa_pairs(batch, id_num):
+    qa_pairs = [
+        {"id": id_num + i, "question": batch["question"][i], "answer": batch["answer"][i]}
+        for i in range(len(batch["question"]))
+    ]
+    return qa_pairs
+
+def save_pairs(pairs, data_name, data_split, dst_folder=os.path.join("..", "data"), append=True):
+    if data_split in ["validation", "val"]:
+        data_split = "dev"
+    data_name = data_name.split("/")[-1]
+    dst_folder = os.path.join(dst_folder, data_name)
+    perms = "a" if append else "w"
+    if not os.path.isdir(dst_folder):
+        os.mkdir(dst_folder)
+    dst_file = os.path.join(dst_folder, f"{data_split}.json")
+    with open(dst_file, perms) as f:
+        f.writelines([f"{json.dumps(pair)}\n" for pair in pairs])
+
+def synthesize(data_name, batch_size=16):
+    for data_split in ["train", "validation"]:
+        data = get_data(data_name, data_split, batch_size)
+        id_num = 0
+        num_batches = DATA_SIZES[data_name][data_split] // batch_size
+        for batch in tqdm(data, desc=f"Generating {data_split}", total=num_batches):
+            qa_pairs = get_qa_pairs(batch, id_num)
+            updated_pairs = generate_paths(qa_pairs)
+            save_pairs(updated_pairs, data_name, data_split, append=(id_num > 0))
+            id_num += batch_size
 
 def combine_data(qa_files=["train", "dev"], dst_folder="fin-cand", 
-        src_folders=None, subgraph_size=20,
+        src_folders=None, subgraph_size=400,
         entities_file="entities.txt", relations_file="relations.txt", vocab_file="vocab.txt"):
     entity2id, relation2id, vocab = {}, {}, {}
     #Combine the qa pairs
