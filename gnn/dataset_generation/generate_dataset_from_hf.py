@@ -183,35 +183,29 @@ def generate_distractors(pairs):
     return updated_pairs
 
 def pathstr_to_list(pathstr):
-    my_paths = []
+    paths = []
     try:
-        my_paths = ast.literal_eval(pathstr)
+        paths = ast.literal_eval(pathstr)
     except:
         pass
     try:
         # Handle case of extra [[[ in front
-        my_paths = ast.literal_eval(pathstr[1:])
+        paths = ast.literal_eval(pathstr[1:])
     except:
         pass
     try:
         # Handle last example ending in ]]]
-        my_paths = ast.literal_eval(pathstr[:-1])
+        paths = ast.literal_eval(pathstr[:-1])
     except:
         pass
     try:
         # Handle case of missing commas
-        my_paths = ast.literal_eval(
+        paths = ast.literal_eval(
             pathstr.replace("]", "],").replace("],,", "],"
         )[:-1])
     except:
         pass
-    # Handle case when only one layer deep
-    if len(my_paths) > 0 and isinstance(my_paths[0], str):
-        my_paths = [my_paths]
-    # Handle case when three layers deep
-    elif len(my_paths) > 0 and len(my_paths[0]) > 0 and isinstance(my_paths[0][0], list):
-        my_paths = my_paths[0]
-    return my_paths
+    return paths
 
 def format_paths(response, pairs):
     updated_pairs = pairs
@@ -225,9 +219,9 @@ def format_paths(response, pairs):
             start = resp.index("[")
             end = len(resp) - resp[::-1].index("]")
             pathstr = resp[start:end]
-            my_paths = pathstr_to_list(pathstr)
-            updated_pairs[idx]["paths"].extend(my_paths)
-            if not my_paths:
+            paths = pathstr_to_list(pathstr)
+            updated_pairs[idx]["paths"].extend(paths)
+            if not paths:
                 print(f"Could not parse: {pathstr}")
                 continue
             idx += 1
@@ -235,11 +229,31 @@ def format_paths(response, pairs):
         print(f"Idx too high: {response}")
     return updated_pairs
 
+def postprocess_paths(paths):
+    # Handle case when only one layer deep
+    if len(paths) > 0 and isinstance(paths[0], str):
+        paths = [paths]
+    # Handle case when three layers deep
+    elif len(paths) > 0 and len(paths[0]) > 0 and isinstance(paths[0][0], list):
+        paths = paths[0]
+    # Handle case where some elements are a list rather than a string
+    processed_paths = []
+    for i, path in enumerate(paths):
+        new_path = []
+        for j, entity in enumerate(path):
+            new_entity = entity
+            if isinstance(entity, list):
+                new_entity = ".".join(entity)
+            new_path.append(new_entity)
+        processed_paths.append(new_path)
+    return processed_paths
+
 def update_subgraph_and_dicts(pairs, subgraph, entity2id, relation2id, vocab, tuple_len=3):
     for pair in pairs:
         if "paths" not in pair:
             print("Paths not found ", pair)
             continue
+        pair["paths"] = postprocess_paths(pair["paths"])
         for word in re.split(VOCAB_SPLIT_RE, pair["question"].lower()):
             if word not in vocab and word.strip() != "":
                 vocab[word] = len(vocab)
