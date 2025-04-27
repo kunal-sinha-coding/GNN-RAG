@@ -278,11 +278,11 @@ def get_qa_pairs(batch, id_num):
     ]
     return qa_pairs
 
-def save_pairs(pairs, data_name, data_split, dst_folder=os.path.join("..", "data"), append=True):
+def save_pairs(pairs, data_name, data_start, data_split, dst_folder=os.path.join("..", "data"), append=True):
     if data_split in ["validation", "val"]:
         data_split = "dev"
     data_name = data_name.split("/")[-1]
-    dst_folder = os.path.join(dst_folder, data_name)
+    dst_folder = os.path.join(dst_folder, f"{data_name}-{str(data_start)}")
     perms = "a" if append else "w"
     if not os.path.isdir(dst_folder):
         os.mkdir(dst_folder)
@@ -290,7 +290,7 @@ def save_pairs(pairs, data_name, data_split, dst_folder=os.path.join("..", "data
     with open(dst_file, perms) as f:
         f.writelines([f"{json.dumps(pair)}\n" for pair in pairs])
 
-def synthesize(data_name, batch_size=1):
+def synthesize(data_name, data_start, batch_size=1):
     for data_split in ["train", "validation"]:
         data = get_data(data_name, data_split, batch_size)
         id_num = 0
@@ -299,7 +299,7 @@ def synthesize(data_name, batch_size=1):
             pairs = get_qa_pairs(batch, id_num)
             path_pairs = generate_paths(pairs)
             path_dist_pairs = generate_distractors(path_pairs)
-            save_pairs(path_dist_pairs, data_name, data_split, append=(id_num > 0))
+            save_pairs(path_dist_pairs, data_name, data_start, data_split, append=(id_num > 0))
             id_num += batch_size
 
 def combine_data(qa_files=["train", "dev"], dst_folder="fin-cand", 
@@ -334,9 +334,10 @@ def combine_data(qa_files=["train", "dev"], dst_folder="fin-cand",
     save_dicts(entity2id, relation2id, vocab, full_dst_folder)
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--data_name', help='Name of the data to generate')
+parser.add_argument('--data_name', help='Name of the data to generate', type=str)
+parser.add_argument('--data_start', help='Where in dataset to start', type=int)
 args = parser.parse_args()
-synthesize(data_name=args.data_name)
+synthesize(data_name=args.data_name, data_start=args.data_start)
 # combine_data()
 
 
