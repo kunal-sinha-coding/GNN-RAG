@@ -66,32 +66,68 @@ FEWSHOT_PATHS = [
         ["NVIDIA", "relation.produces", "Blackwell AI supercomputers", "relation.achieved_sales_in_Q4Y25", "billions of dollars"]
     ]
 ]
-EOS_TOKEN = "[next]"
+SEP_TOKEN = "\n"
 PROMPTS = {
+    "paths_single": (
+        '''
+        Imagine we have a knowledge graph containing financial information.
+        For the question-answer pair, output a hypothetical list of paths in the graph that could answer the question.
+        Each path connects entities with relations and can be of varying lengths.
+        Each path starts with an entity, alternates between entities and relations, then ends with an entity.
+        Each relation starts with "relation."
+        Do not output an empty list.
+        The entire output should be on one line.
+        Here is an example of the format that the output should be in:
+        {fewshot_paths}
+        Question-answer pair:
+        {pairs_str}
+        '''
+    ),
+    "distractors_single": (
+        '''
+        Imagine we have a knowledge graph containing financial information.
+        We have a list of paths in the graph here:
+        {previous_paths}
+        Output a new path in the same format. Only output the new path.
+        The new path has one entity or relation that is the same as the one in the corresponding original path. However, all the other entities and relations are different.
+        Each path connects entities with relations and can be of varying lengths.
+        Each path starts with an entity, alternates between entities and relations, then ends with an entity.
+        Each relation starts with "relation."
+        Do not output an empty list.
+        The entire output should be on one line.
+        Here is an example of the format that the output should be in:
+        {fewshot_paths}
+        '''
+    ),
     "paths": (
         '''
         Imagine we have a knowledge graph containing financial information.
         For each question-answer pair, output a list of paths on its own line.
         Each path is a hypothetical path in the knowledge graph that could answer the question.
         Each path connects entities with relations and can be of varying lengths.
-        Each path starts with an entity, alternates between entities and relations, then ends with an entity. 
+        Each path starts with an entity, alternates between entities and relations, then ends with an entity.
+        Each relation starts with "relation."
         Each question-answer pair can correspond to one or more paths.
+        The different paths in one list should be on the same line. But different lists of paths are on separate lines.
+        Do not output an empty list for any question-answer pair.
         Here is an example of the format that the output should be in:
         {fewshot_paths}
-        Question-answer pairs:
+        Question-answer pair:
         {pairs_str}
         '''
     ),
     "distractors": (
         '''
         Imagine we have a knowledge graph containing financial information.
-        On each line, we have a list of paths in the graph:
+        On each line, we have a list of paths here:
         {previous_paths}
         For each list, output a new path in the same format, on its own line. Only output the new path.
-        Each path has one entity or relation that is the same as the one in an old path. However, the other entities and relations are different.
-        Each path is a hypothetical path in the graph.
+        The new path has one entity or relation that is the same as the one in the corresponding original path. However, all the other entities and relations are different.
+        Each path is a hypothetical path in the knowledge graph.
         Each path connects entities with relations and can be of varying lengths.
         Each path starts with an entity, alternates between entities and relations, then ends with an entity.
+        Each relation starts with "relation."
+        Each new path should be on a separate line.
         Here is an example of the format the output should be in:
         {fewshot_paths}
         '''
@@ -126,22 +162,20 @@ def generate(prompt, context=""):
 
 def generate_paths(pairs):
     pairs_str = "Question-answer pairs:\n" + "\n".join([json.dumps(pair) for pair in pairs])
-    fewshot_paths = f"\n".join([str(paths) for i, paths in enumerate(FEWSHOT_PATHS)])
-    response = generate(PROMPTS["paths"].format(
+    fewshot_paths = SEP_TOKEN.join([str(paths) for i, paths in enumerate(FEWSHOT_PATHS)])
+    response = generate(PROMPTS["paths_single"].format(
         fewshot_paths=fewshot_paths,
-        eos_token=EOS_TOKEN,
         pairs_str=pairs_str
     ))
     updated_pairs = format_paths(response, pairs)
     return updated_pairs
 
 def generate_distractors(pairs):
-    previous_paths = "\n".join([str(pair["paths"]) for i, pair in enumerate(pairs)])
-    fewshot_paths = "\n".join([str(paths) for i, paths in enumerate(FEWSHOT_PATHS)]) 
-    response = generate(PROMPTS["distractors"].format(
+    previous_paths = SEP_TOKEN.join([str(pair["paths"]) for i, pair in enumerate(pairs)])
+    fewshot_paths = SEP_TOKEN.join([str(paths) for i, paths in enumerate(FEWSHOT_PATHS)]) 
+    response = generate(PROMPTS["distractors_single"].format(
         previous_paths=previous_paths,
         fewshot_paths=fewshot_paths,
-        eos_token=EOS_TOKEN
     ))
     updated_pairs = format_paths(response, pairs)
     return updated_pairs
@@ -173,28 +207,23 @@ def pathstr_to_list(pathstr):
 def format_paths(response, pairs):
     updated_pairs = pairs
     idx = 0
-    for i, resp in enumerate(response.split("\n")):
+    for i, resp in enumerate(response.split(SEP_TOKEN)):
+        if idx >= len(pairs):
+            continue
+        if "paths" not in updated_pairs[idx]:
+            updated_pairs[idx]["paths"] []
         if "[" in resp and "]" in resp:
             start = resp.index("[")
             end = len(resp) - resp[::-1].index("]")
             pathstr = resp[start:end]
             my_paths = pathstr_to_list(pathstr)
-            try:
-                if "paths" not in updated_pairs[idx]:
-                    updated_pairs[idx]["paths"] = []
-                updated_pairs[idx]["paths"].extend(my_paths)
-            except:
-                import pdb; pdb.set_trace()
+            updated_pairs[idx]["paths"].extend(my_paths)
             if not my_paths:
                 print(f"Could not parse: {pathstr}")
+                continue
             idx += 1
-    if idx < 5:
-        for i in range(idx):
-            quest = pairs[i]["question"]
-            pth = updated_pairs[i]["paths"] if i < len(updated_pairs) else ""
-            print(i, quest)
-            print(pth)
-            print("\n")
+    if idx < 1:
+        print(response)
         import pdb; pdb.set_trace()
     return updated_pairs
 
@@ -261,7 +290,7 @@ def save_pairs(pairs, data_name, data_split, dst_folder=os.path.join("..", "data
     with open(dst_file, perms) as f:
         f.writelines([f"{json.dumps(pair)}\n" for pair in pairs])
 
-def synthesize(data_name, batch_size=10):
+def synthesize(data_name, batch_size=1):
     for data_split in ["train", "validation"]:
         data = get_data(data_name, data_split, batch_size)
         id_num = 0
