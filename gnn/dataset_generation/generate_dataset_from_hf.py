@@ -187,13 +187,20 @@ def pathstr_to_list(pathstr):
     except:
         pass
     try:
-        # Sometimes extra [ in front
+        # Handle case of extra [[[ in front
         my_paths = ast.literal_eval(pathstr[1:])
     except:
         pass
     try:
         # Handle last example ending in ]]]
         my_paths = ast.literal_eval(pathstr[:-1])
+    except:
+        pass
+    try:
+        # Handle case of missing commas
+        my_paths = ast.literal_eval(
+            pathstr.replace("]", "],").replace("],,", "],"
+        )[:-1])
     except:
         pass
     # Handle case when only one layer deep
@@ -211,7 +218,7 @@ def format_paths(response, pairs):
         if idx >= len(pairs):
             continue
         if "paths" not in updated_pairs[idx]:
-            updated_pairs[idx]["paths"] []
+            updated_pairs[idx]["paths"] = []
         if "[" in resp and "]" in resp:
             start = resp.index("[")
             end = len(resp) - resp[::-1].index("]")
@@ -223,8 +230,7 @@ def format_paths(response, pairs):
                 continue
             idx += 1
     if idx < 1:
-        print(response)
-        import pdb; pdb.set_trace()
+        print(f"Idx too high: {response}")
     return updated_pairs
 
 def update_subgraph_and_dicts(pairs, subgraph, entity2id, relation2id, vocab, tuple_len=3):
@@ -295,7 +301,9 @@ def synthesize(data_name, data_start, batch_size=1):
         data = get_data(data_name, data_split, batch_size)
         id_num = 0
         num_batches = DATA_SIZES[data_name][data_split] // batch_size
-        for batch in tqdm(data, desc=f"Generating {data_split}", total=num_batches):
+        for i, batch in enumerate(tqdm(data, desc=f"Generating {data_split}", total=num_batches)):
+            if i < data_start:
+                continue
             pairs = get_qa_pairs(batch, id_num)
             path_pairs = generate_paths(pairs)
             path_dist_pairs = generate_distractors(path_pairs)
@@ -335,7 +343,8 @@ def combine_data(qa_files=["train", "dev"], dst_folder="fin-cand",
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--data_name', help='Name of the data to generate', type=str)
-parser.add_argument('--data_start', help='Where in dataset to start', type=int)
+parser.add_argument('--data_start', help='Where in dataset to start', type=int, default=0)
+#parser.add_argument('--data_end', help='Where in dataset to end', type=int, default=6250)
 args = parser.parse_args()
 synthesize(data_name=args.data_name, data_start=args.data_start)
 # combine_data()
