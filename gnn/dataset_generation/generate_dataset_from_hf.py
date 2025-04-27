@@ -18,11 +18,11 @@ max_new_tokens = {
     "Qwen/Qwen2.5-7B-Instruct": 2048,
     "meta-llama/Llama-2-7b-chat-hf": 2048
 }
-model = AutoModelForCausalLM.from_pretrained(
-  model_name,
-  cache_dir=cache_dir,
-  torch_dtype=torch.float16
-).to(device)
+#model = AutoModelForCausalLM.from_pretrained(
+#  model_name,
+#  cache_dir=cache_dir,
+#  torch_dtype=torch.float16
+#).to(device)
 
 DATA_SIZES = {
     "dreamerdeo/finqa": {
@@ -76,6 +76,7 @@ PROMPTS = {
         Each path starts with an entity, alternates between entities and relations, then ends with an entity.
         Each relation starts with "relation."
         Do not output an empty list.
+        Output in English.
         The entire output should be on one line.
         Here is an example of the format that the output should be in:
         {fewshot_paths}
@@ -94,6 +95,7 @@ PROMPTS = {
         Each path starts with an entity, alternates between entities and relations, then ends with an entity.
         Each relation starts with "relation."
         Do not output an empty list.
+        Output in English.
         The entire output should be on one line.
         Here is an example of the format that the output should be in:
         {fewshot_paths}
@@ -245,12 +247,15 @@ def update_subgraph_and_dicts(pairs, subgraph, entity2id, relation2id, vocab, tu
             path_ids = []
             for i, ent in enumerate(path):
                 if i % 2 == 0:
-                    if ent not in entity2id:
-                        entity2id[ent] = len(entity2id)
-                    ent_id = entity2id[ent]
-                    path_ids.append(ent_id)
-                    if ent_id not in subgraph["entities"]:
-                        subgraph["entities"].append(ent_id)
+                    try:
+                        if ent not in entity2id:
+                            entity2id[ent] = len(entity2id)
+                        ent_id = entity2id[ent]
+                        path_ids.append(ent_id)
+                        if ent_id not in subgraph["entities"]:
+                            subgraph["entities"].append(ent_id)
+                    except:
+                        import pdb; pdb.set_trace()
                 else:
                     if ent not in relation2id:
                         relation2id[ent] = len(relation2id)
@@ -310,13 +315,13 @@ def synthesize(data_name, data_start, batch_size=1):
             save_pairs(path_dist_pairs, data_name, data_start, data_split, append=(id_num > 0))
             id_num += batch_size
 
-def combine_data(qa_files=["train", "dev"], dst_folder="fin-cand", 
-        src_folders=None, subgraph_size=400,
+def combine_data(qa_files=["train", "dev"], data_folder="../data", dst_folder="finqa-debug", 
+        src_folders=["finqa-0"], subgraph_size=400,
         entities_file="entities.txt", relations_file="relations.txt", vocab_file="vocab.txt"):
     entity2id, relation2id, vocab = {}, {}, {}
     #Combine the qa pairs
     for qa_file in qa_files:
-        full_dst_folder = os.path.join("data", dst_folder)
+        full_dst_folder = os.path.join(data_folder, dst_folder)
         if not os.path.isdir(full_dst_folder):
             os.makedirs(full_dst_folder)
         dst_file = os.path.join(full_dst_folder, f"{qa_file}.json")
@@ -326,7 +331,7 @@ def combine_data(qa_files=["train", "dev"], dst_folder="fin-cand",
         with open(dst_file, "w") as dst:
             dst.write("")
             for src_fold in src_folders:
-                src_file = os.path.join("data", src_fold, f"{qa_file}.json")
+                src_file = os.path.join(data_folder, src_fold, f"{qa_file}.json")
                 with open(src_file, "r") as src:
                     lines = list(src.readlines())
                     #Handle the dictionaries
@@ -338,15 +343,17 @@ def combine_data(qa_files=["train", "dev"], dst_folder="fin-cand",
                         update_subgraph_and_dicts(pairs, subgraph, entity2id, relation2id, vocab)
                         all_pairs.extend(pairs)
                         idx += subgraph_size
+            import pdb; pdb.set_trace()
             dst.writelines([json.dumps(pair) + "\n" for pair in all_pairs])
+    import pdb; pdb.set_trace()
     save_dicts(entity2id, relation2id, vocab, full_dst_folder)
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--data_name', help='Name of the data to generate', type=str)
-parser.add_argument('--data_start', help='Where in dataset to start', type=int, default=0)
+#parser = argparse.ArgumentParser()
+#parser.add_argument('--data_name', help='Name of the data to generate', type=str)
+#parser.add_argument('--data_start', help='Where in dataset to start', type=int, default=0)
 #parser.add_argument('--data_end', help='Where in dataset to end', type=int, default=6250)
-args = parser.parse_args()
-synthesize(data_name=args.data_name, data_start=args.data_start)
-# combine_data()
+#args = parser.parse_args()
+#synthesize(data_name=args.data_name, data_start=args.data_start)
+combine_data()
 
 
