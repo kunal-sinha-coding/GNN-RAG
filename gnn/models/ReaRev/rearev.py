@@ -242,7 +242,7 @@ class ReaRev(BaseModel):
                 correct[i] = int(prediction in question_dict["answer"][i])
         return correct, scores
  
-    def forward(self, batch, question_dict, training=False, replug=True, top_k=10, eval_k=10, ppl_bsz=10, gamma=1, 
+    def forward(self, batch, question_dict, training=False, replug=True, top_k=5, ppl_bsz=20, gamma=1, 
                 save_ppl_files=[], debug_ppl=False, overwrite_ppl=False, table_name=None, do_eval=True, skip_retrieval=False):
         """
         Forward function: creates instructions and performs GNN reasoning.
@@ -329,7 +329,7 @@ class ReaRev(BaseModel):
                         perplexities = []
                         idx = 0
                         #Stop once all entries in batch have no candidates left
-                        while idx < num_cands and any([cand[idx] != "" for cand in candidates]):
+                        while idx < num_cands: # and any([cand[idx] != "" for cand in candidates]):
                             question_dict["cand"] = candidates[:, idx : min((idx + ppl_bsz, num_cands))]
                             all_input, all_input_list = self.input_builder.process_input_batch(question_dict)
                             # Only compute when case_valid
@@ -342,15 +342,23 @@ class ReaRev(BaseModel):
                                 input_master_list.extend(all_input_list[0])
                             perplexities.append(curr_perplexity)
                             idx += ppl_bsz
-                        llm_perplexity = torch.cat(perplexities, dim=-1)
+                        try:
+                            llm_perplexity = torch.cat(perplexities, dim=-1)
+                        except:
+                            import pdb; pdb.set_trace()
                         for i in range(bsz):
                             torch.save(llm_perplexity[i:i+1, :], save_ppl_files[i])
                     llm_likelihood = torch.zeros((bsz, num_cands)).to(self.device)
                     for i in range(bsz):
                         llm_perplexity = torch.load(save_ppl_files[i]).to(self.device)
                         num_scores = llm_perplexity.size(-1)
-                        ppl_sorted, ppl_indices_sorted = llm_perplexity[0].sort()
-                        llm_likelihood[i, ppl_indices_sorted[-top_k:]] = torch.softmax(ppl_sorted[-top_k:] * gamma, dim=-1)
+                        try:
+                            ppl_sorted, ppl_indices_sorted = llm_perplexity[0].sort()
+                            ppl_softmax = torch.softmax(ppl_sorted[-top_k:] * gamma, dim=-1)
+                            ppl_softmax_safe = torch.where(ppl_softmax.isnan(), 0, ppl_softmax)
+                            llm_likelihood[i, ppl_indices_sorted[-top_k:]] = ppl_softmax_safe
+                        except:
+                            import pdb; pdb.set_trace()
                         if debug_ppl and do_eval:
                             best_ppl_cands = candidates[i, llm_perplexity.argsort(dim=-1)[0, -5:].cpu().numpy()]
                             pred_cands = candidates[i, pred_dist.argsort(dim=-1)[i, -5:].cpu().numpy()]

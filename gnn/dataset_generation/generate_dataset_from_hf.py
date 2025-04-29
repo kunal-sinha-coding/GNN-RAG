@@ -246,16 +246,14 @@ def postprocess_paths(paths):
                 new_entity = "entity" # Include placeholder if empty
                 print("Using placeholder in ", path)
             if isinstance(entity, list):
-                new_entity = ".".join(entity)
-            new_path.append(new_entity)
+                new_entity = " and ".join(entity)
+                print("Joining to get ", new_entity)
+            new_path.append(new_entity.strip()) # Remove whitespace to avoid repeats
         processed_paths.append(new_path)
     return processed_paths
 
 def update_subgraph_and_dicts(pairs, subgraph, entity2id, relation2id, vocab, tuple_len=3):
     for pair in pairs:
-        if "paths" not in pair:
-            print("Paths not found ", pair)
-            continue
         pair["paths"] = postprocess_paths(pair["paths"])
         for word in re.split(VOCAB_SPLIT_RE, pair["question"].lower()):
             if word not in vocab and word.strip() != "":
@@ -264,15 +262,12 @@ def update_subgraph_and_dicts(pairs, subgraph, entity2id, relation2id, vocab, tu
             path_ids = []
             for i, ent in enumerate(path):
                 if i % 2 == 0:
-                    try:
-                        if ent not in entity2id:
-                            entity2id[ent] = len(entity2id)
-                        ent_id = entity2id[ent]
-                        path_ids.append(ent_id)
-                        if ent_id not in subgraph["entities"]:
-                            subgraph["entities"].append(ent_id)
-                    except:
-                        import pdb; pdb.set_trace()
+                    if ent not in entity2id:
+                        entity2id[ent] = len(entity2id)
+                    ent_id = entity2id[ent]
+                    path_ids.append(ent_id)
+                    if ent_id not in subgraph["entities"]:
+                        subgraph["entities"].append(ent_id)
                 else:
                     if ent not in relation2id:
                         relation2id[ent] = len(relation2id)
@@ -289,10 +284,7 @@ def save_dicts(entity2id, relation2id, vocab, folder_name,
     entities_file = os.path.join(folder_name, entities_file)
     with open(entities_file, "w") as f:
         for entity in entity2id.keys():
-            try:
-                f.write(entity + "\n")
-            except:
-                import pdb; pdb.set_trace()
+            f.write(entity + "\n")
     relations_file = os.path.join(folder_name, relations_file)
     with open(relations_file, "w") as f:
         for relation in relation2id.keys():
@@ -336,7 +328,7 @@ def synthesize(data_name, data_start, batch_size=1):
             id_num += batch_size
 
 def combine_data(qa_files=["train", "dev"], data_folder="../data", dst_folder="finqa-debug", 
-        src_folders=["finqa-0"], subgraph_size=400,
+        src_folders=["finqa-0"], subgraph_size=250,
         entities_file="entities.txt", relations_file="relations.txt", vocab_file="vocab.txt"):
     entity2id, relation2id, vocab = {}, {}, {}
     #Combine the qa pairs
@@ -363,8 +355,8 @@ def combine_data(qa_files=["train", "dev"], data_folder="../data", dst_folder="f
                         update_subgraph_and_dicts(pairs, subgraph, entity2id, relation2id, vocab)
                         all_pairs.extend(pairs)
                         idx += subgraph_size
+                        print(len(subgraph["tuples"]), len(subgraph["entities"]))
             dst.writelines([json.dumps(pair) + "\n" for pair in all_pairs])
-    import pdb; pdb.set_trace()
     save_dicts(entity2id, relation2id, vocab, full_dst_folder)
 
 #parser = argparse.ArgumentParser()
