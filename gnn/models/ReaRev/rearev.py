@@ -62,7 +62,7 @@ class ReaRev(BaseModel):
         self.llm_args = argparse.Namespace( #ToDo: dont hardcode
             add_rule=False, cot=False, d='RoG-cwq', data_path='rmanluo', debug=False, dtype='fp16', 
             each_line=False, encrypt=False, explain=False, filter_empty=False, force=False, 
-            max_new_tokens=512, maximun_token=4096, model_name='RoG', model_path='meta-llama/Llama-2-7b-chat-hf',#'rmanluo/RoG',#'TinyLlama/TinyLlama-1.1B-Chat-v0.6', 
+            max_new_tokens=512, maximun_token=4096, model_name='RoG', model_path='rmanluo/RoG',#'meta-llama/Llama-2-7b-chat-hf',#'TinyLlama/TinyLlama-1.1B-Chat-v0.6', 
             n=1, predict_path='llm/results/KGQA-GNN-RAG/rearev-sbert', prompt_path='llm/prompts/llama2_predict.txt', 
             rule_path='llm/results/gen_rule_path/RoG-cwq/RoG/test/predictions_3_False.jsonl', 
             rule_path_g1='llm/results/gnn/RoG-cwq/rearev-sbert/test.info', 
@@ -199,9 +199,6 @@ class ReaRev(BaseModel):
         throttle_time=1, table_name=None, include_reasoning_paths=True, pd=[]):
         default_prompt = "Please answer the given question in one sentence." 
         all_input = [f"{default_prompt} {quest}" for quest in question_dict["question"]]
-        #for i in range(len(question_dict["cand"])):
-            #pred_mask = (pd[i, -10:] < .03).cpu().numpy()
-            #question_dict["cand"][i][pred_mask] = ""
         if include_reasoning_paths:
             all_input, _ = self.input_builder.process_input_batch(question_dict, include_all_paths=True)
         correct = [0 for inp in all_input]
@@ -231,8 +228,6 @@ class ReaRev(BaseModel):
                 if response.ok:
                     scores[i] = response.json()["score"]
                     correct[i] = scores[i]
-                    #print(payload)
-                    #print(scores[i])
                 #table_data = self.llm_output_table.data
                 #iteration = table_data[-1][0] + 1 if len(table_data) > 0 else 0
                 #self.llm_output_table.add_data(
@@ -334,7 +329,7 @@ class ReaRev(BaseModel):
                         perplexities = []
                         idx = 0
                         #Stop once all entries in batch have no candidates left
-                        while idx < num_cands: #and any([cand[idx] != "" for cand in candidates]):
+                        while idx < num_cands and any([cand[idx] != "" for cand in candidates]):
                             question_dict["cand"] = candidates[:, idx : min((idx + ppl_bsz, num_cands))]
                             all_input, all_input_list = self.input_builder.process_input_batch(question_dict)
                             # Only compute when case_valid
@@ -354,7 +349,6 @@ class ReaRev(BaseModel):
                     for i in range(bsz):
                         llm_perplexity = torch.load(save_ppl_files[i]).to(self.device)
                         num_scores = llm_perplexity.size(-1)
-                        #llm_likelihood[i, :num_scores] = torch.softmax(llm_perplexity * gamma, dim=-1)
                         ppl_sorted, ppl_indices_sorted = llm_perplexity[0].sort()
                         llm_likelihood[i, ppl_indices_sorted[-top_k:]] = torch.softmax(ppl_sorted[-top_k:] * gamma, dim=-1)
                         if debug_ppl and do_eval:
@@ -371,12 +365,13 @@ class ReaRev(BaseModel):
 
         pred_dist = self.dist_history[-1]
         pred = torch.max(pred_dist, dim=1)[1]
-        question_dict["cand"] = top_cands # To run 'full-subgraph', just comment this out; to run llm-only, just pass in the include_reasoning_paths flag
+        if not skip_retrieval:
+            question_dict["cand"] = top_cands
         correct = [0 for i in range(bsz)]
         scores = [0 for i in range(bsz)]
         if do_eval:
             correct, scores = self.evaluate_llm(
-                question_dict, eval_sequence=True, table_name=table_name, pd=pred_dist.sort(dim=-1)[0]
+                question_dict, eval_sequence=True, table_name=table_name, pd=pred_dist.sort(dim=-1)[0],
             )
         if training:
             h1, f1 = self.get_eval_metric(pred_dist, answer_dist)

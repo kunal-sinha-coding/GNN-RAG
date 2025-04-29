@@ -138,7 +138,7 @@ class Evaluator:
                     #     tp_obj[j]['attention'] = attention_tp.tolist()
         return obj_list
 
-    def evaluate(self, valid_data, test_batch_size=1, write_info=False, is_test=True):
+    def evaluate(self, valid_data, test_batch_size=1, write_info=False, is_test=True, skip_retrieval=False):
         write_info = True
         data_split = "test" if is_test else "dev"
         self.model.eval()
@@ -170,6 +170,7 @@ class Evaluator:
             with torch.no_grad():
                 loss, extras, pred_dist, tp_list, correct, recall, scores = self.model(
                     batch[:-1], question_dict, save_ppl_files=save_ppl_files,
+                    skip_retrieval=skip_retrieval
                 )
                 pred = torch.max(pred_dist, dim=1)[1]
             if self.model_name == 'GraftNet':

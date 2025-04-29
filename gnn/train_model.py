@@ -130,7 +130,9 @@ class Trainer_KBQA(object):
             self.load_ckpt(ckpt_path)
 
     def evaluate(self, data, test_batch_size=1, write_info=False, is_test=True):
-        return self.evaluator.evaluate(data, test_batch_size, write_info, is_test)
+        return self.evaluator.evaluate(
+            data, test_batch_size, write_info, is_test, skip_retrieval=self.skip_retrieval
+        )
 
     def train(self, start_epoch, end_epoch):
         # self.load_pretrain()
