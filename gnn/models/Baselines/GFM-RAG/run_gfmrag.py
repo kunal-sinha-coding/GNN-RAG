@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
     config_path="config", config_name="stage3_qa_ircot_inference", version_base=None
 )
 def main(cfg: DictConfig) -> None:
+    import pdb; pdb.set_trace()
     output_dir = HydraConfig.get().runtime.output_dir
     logger.info(f"Config:\n {OmegaConf.to_yaml(cfg)}")
     logger.info(f"Current working directory: {os.getcwd()}")
@@ -34,3 +35,5 @@ def main(cfg: DictConfig) -> None:
     answer = llm.generate_sentence(message)  # Answer: "Emmanuel Macron"
     print(answer)
     import pdb; pdb.set_trace()
+
+main()
