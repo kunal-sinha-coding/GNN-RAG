@@ -62,7 +62,7 @@ class ReaRev(BaseModel):
         self.llm_args = argparse.Namespace( #ToDo: dont hardcode
             add_rule=False, cot=False, d='RoG-cwq', data_path='rmanluo', debug=False, dtype='fp16', 
             each_line=False, encrypt=False, explain=False, filter_empty=False, force=False, 
-            max_new_tokens=512, maximun_token=4096, model_name='RoG', model_path='rmanluo/RoG',#'meta-llama/Llama-2-7b-chat-hf',#'TinyLlama/TinyLlama-1.1B-Chat-v0.6', 
+            max_new_tokens=512, maximun_token=4096, model_name='RoG', model_path='meta-llama/Llama-2-7b-chat-hf', #rmanluo/RoG, #'TinyLlama/TinyLlama-1.1B-Chat-v0.6', 
             n=1, predict_path='llm/results/KGQA-GNN-RAG/rearev-sbert', prompt_path='llm/prompts/llama2_predict.txt', 
             rule_path='llm/results/gen_rule_path/RoG-cwq/RoG/test/predictions_3_False.jsonl', 
             rule_path_g1='llm/results/gnn/RoG-cwq/rearev-sbert/test.info', 
@@ -196,7 +196,7 @@ class ReaRev(BaseModel):
         return cur_loss
         
     def evaluate_llm(self, question_dict, eval_sequence=False, 
-        throttle_time=1, table_name=None, include_reasoning_paths=True, pd=[]):
+            throttle_time=1, table_name=None, include_reasoning_paths=True):
         default_prompt = "Please answer the given question in one sentence." 
         all_input = [f"{default_prompt} {quest}" for quest in question_dict["question"]]
         if include_reasoning_paths:
@@ -205,7 +205,11 @@ class ReaRev(BaseModel):
         scores = [0 for inp in all_input]
         for i, curr_input in enumerate(all_input):
             start_time = time.time()
-            prediction = self.llm_model.generate_sentence(curr_input).strip()
+            try:
+                prediction = self.llm_model.generate_sentence(curr_input).strip()
+            except:
+                print("Failed on generate sentence")
+                print(f"Curr input: {curr_input}")
             groundtruth = question_dict["answer"][i][0]
             unit_test = f"Is the response correct? Groundtruth: {groundtruth}"
             if eval_sequence:
@@ -226,8 +230,12 @@ class ReaRev(BaseModel):
                     time.sleep(throttle_time - time_elapsed)
                 response = requests.post(url, json=payload, headers=headers)
                 if response.ok:
-                    scores[i] = response.json()["score"]
-                    correct[i] = scores[i]
+                    score = response.json().get("score")
+                    if score:
+                        scores[i] = score
+                        correct[i] = score
+                    else:
+                        print(f"Response not ok: {response.json()}")
                 #table_data = self.llm_output_table.data
                 #iteration = table_data[-1][0] + 1 if len(table_data) > 0 else 0
                 #self.llm_output_table.add_data(
@@ -310,7 +318,8 @@ class ReaRev(BaseModel):
         pred_dist = self.dist_history[-1]
         # Handle degenerate cases
         question_exists = (query_entities.sum(dim=-1, keepdim=True) > 0).float()
-        case_valid = question_exists
+        answer_exists = torch.from_numpy(np.array(question_dict["answer"]) != "").float().to(self.device)
+        case_valid = question_exists * answer_exists
         loss = torch.tensor([0.0])
         recall = 0.0
         sorted_indices = pred_dist.sort(dim=-1).indices
@@ -320,7 +329,7 @@ class ReaRev(BaseModel):
         bsz, num_cands = candidates.shape
         top_indices = sorted_indices[:, -top_k:]
         top_cands = candidates[np.arange(bsz)[:, None], top_indices.cpu().numpy()]
-        if not skip_retrieval:
+        if training and not skip_retrieval:
             if replug and question_dict:
                 with torch.no_grad():
                     input_master_list = []
@@ -342,24 +351,18 @@ class ReaRev(BaseModel):
                                 input_master_list.extend(all_input_list[0])
                             perplexities.append(curr_perplexity)
                             idx += ppl_bsz
-                        try:
-                            llm_perplexity = torch.cat(perplexities, dim=-1)
-                        except:
-                            import pdb; pdb.set_trace()
+                        llm_perplexity = torch.cat(perplexities, dim=-1)
                         for i in range(bsz):
                             torch.save(llm_perplexity[i:i+1, :], save_ppl_files[i])
                     llm_likelihood = torch.zeros((bsz, num_cands)).to(self.device)
                     for i in range(bsz):
                         llm_perplexity = torch.load(save_ppl_files[i]).to(self.device)
                         num_scores = llm_perplexity.size(-1)
-                        try:
-                            ppl_sorted, ppl_indices_sorted = llm_perplexity[0].sort()
-                            ppl_softmax = torch.softmax(ppl_sorted[-top_k:] * gamma, dim=-1)
-                            ppl_softmax_safe = torch.where(ppl_softmax.isnan(), 0, ppl_softmax)
-                            llm_likelihood[i, ppl_indices_sorted[-top_k:]] = ppl_softmax_safe
-                        except:
-                            import pdb; pdb.set_trace()
-                        if debug_ppl and do_eval:
+                        ppl_sorted, ppl_indices_sorted = llm_perplexity[0].sort()
+                        ppl_softmax = torch.softmax(ppl_sorted[-top_k:] * gamma, dim=-1)
+                        ppl_softmax_safe = torch.where(ppl_softmax.isnan(), 0, ppl_softmax)
+                        llm_likelihood[i, ppl_indices_sorted[-top_k:]] = ppl_softmax_safe
+                        if debug_ppl:
                             best_ppl_cands = candidates[i, llm_perplexity.argsort(dim=-1)[0, -5:].cpu().numpy()]
                             pred_cands = candidates[i, pred_dist.argsort(dim=-1)[i, -5:].cpu().numpy()]
                             print(question_dict["answer"][i])
@@ -379,7 +382,7 @@ class ReaRev(BaseModel):
         scores = [0 for i in range(bsz)]
         if do_eval:
             correct, scores = self.evaluate_llm(
-                question_dict, eval_sequence=True, table_name=table_name, pd=pred_dist.sort(dim=-1)[0],
+                question_dict, eval_sequence=True, table_name=table_name,
             )
         if training:
             h1, f1 = self.get_eval_metric(pred_dist, answer_dist)

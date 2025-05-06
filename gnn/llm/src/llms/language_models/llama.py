@@ -154,6 +154,7 @@ class Llama(BaseLanguageModel):
 
     @torch.inference_mode()
     def generate_sentence(self, llm_input):
+        self.tokenizer.add_special_tokens({'pad_token': '[PAD]'})
         llm_input_ids = self.tokenizer.encode(llm_input, return_tensors="pt").to(self.device)
         outputs = self.llm_model.generate(
             llm_input_ids, max_new_tokens=self.args.max_new_tokens

@@ -1,4 +1,4 @@
-python3 main.py ReaRev --entity_dim 50 --num_epoch 200 --batch_size 8  --eval_every 1 --lm relbert --num_iter 3 --num_ins 3 --num_gnn 4 --name finqa-debug --experiment_name finqa-debug --data_folder data/finqa-debug/ --train_data_start .8 #--warmup_epoch 80
+python3 main.py ReaRev --entity_dim 50 --num_epoch 200 --batch_size 8  --eval_every 1 --lm relbert --num_iter 3 --num_ins 3 --num_gnn 4 --name finqa-debug --experiment_name finqa-debug --data_folder data/finqa-debug/  #--warmup_epoch 80
 ###ReaRev+SBERT training
 # --load_experiment relbert-full_cwq-rearev-final.ckpt
 #python3 main.py ReaRev --entity_dim 50 --num_epoch 200 --batch_size 16 --eval_every 1  \
