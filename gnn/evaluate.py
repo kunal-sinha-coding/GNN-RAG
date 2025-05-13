@@ -85,6 +85,7 @@ class Evaluator:
             self.entity2name = list((pickle.load(file)).keys())
             file.close()
         self.data_name = args['data_folder']
+        self.name = args['name']
             
         id2relation = {idx: relation for relation, idx in relation2id.items()}
         num_rel_ori = len(relation2id)
@@ -162,7 +163,7 @@ class Evaluator:
             batch = valid_data.get_batch(start, end, fact_dropout=0.0, test=True)
             question_dict = valid_data.get_question_dict(batch, start, end)
             save_ppl_files = []
-            ppl_folder = os.path.join("perplexity_scores", self.data_name, data_split)
+            ppl_folder = os.path.join("perplexity_scores", self.name, data_split)
             if not os.path.isdir(ppl_folder):
                 os.makedirs(ppl_folder)
             for idx in range(start, end):

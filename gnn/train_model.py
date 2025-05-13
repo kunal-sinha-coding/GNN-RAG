@@ -42,7 +42,8 @@ class Trainer_KBQA(object):
         self.bsz = self.args['batch_size']
         self.test_batch_size = args['test_batch_size']
         self.data_folder = args['data_folder']
-        self.ppl_folder = os.path.join("perplexity_scores", self.data_folder, "train")
+        self.name = args['name']
+        self.ppl_folder = os.path.join("perplexity_scores", self.name, "train")
         self.skip_retrieval = args['skip_retrieval']
         self.long_answer = args['long_answer']
         if not os.path.isdir(self.ppl_folder):
