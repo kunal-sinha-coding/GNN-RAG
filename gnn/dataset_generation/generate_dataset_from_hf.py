@@ -253,21 +253,23 @@ def postprocess_paths(paths):
     return processed_paths
 
 def update_subgraph_and_dicts(pairs, subgraph, entity2id, relation2id, vocab, tuple_len=3):
-    for pair in pairs:
+    for i, pair in enumerate(pairs):
         pair["paths"] = postprocess_paths(pair["paths"])
         for word in re.split(VOCAB_SPLIT_RE, pair["question"].lower()):
             if word not in vocab and word.strip() != "":
                 vocab[word] = len(vocab)
-        for path in pair["paths"]:
+        for j, path in enumerate(pair["paths"]):
             path_ids = []
-            for i, ent in enumerate(path):
-                if i % 2 == 0:
+            for k, ent in enumerate(path):
+                if k % 2 == 0:
                     if ent not in entity2id:
                         entity2id[ent] = len(entity2id)
                     ent_id = entity2id[ent]
                     path_ids.append(ent_id)
                     if ent_id not in subgraph["entities"]:
                         subgraph["entities"].append(ent_id)
+                    if j == 0 and k == 0:
+                        pairs[i]["entities"] = [ent_id] # First entity seen in the first path is the query entity
                 else:
                     if ent not in relation2id:
                         relation2id[ent] = len(relation2id)
@@ -277,7 +279,6 @@ def update_subgraph_and_dicts(pairs, subgraph, entity2id, relation2id, vocab, tu
                     path_ids = path_ids[-1:]
     for i, pair in enumerate(pairs):
         pairs[i]["subgraph"] = subgraph
-        pairs[i]["entities"] = list(set([entity2id[path[0]] for path in pair["paths"]]))
 
 def save_dicts(entity2id, relation2id, vocab, folder_name,
                 entities_file="entities.txt", relations_file="relations.txt", vocab_file="vocab.txt"):
@@ -327,7 +328,7 @@ def synthesize(data_name, data_start, batch_size=1):
             save_pairs(path_dist_pairs, data_name, data_start, data_split, append=(id_num > 0))
             id_num += batch_size
 
-def combine_data(qa_files=["train", "dev"], data_folder="../data", dst_folder="finqa-debug", 
+def combine_data(qa_files=["dev"], data_folder="../data", dst_folder="finqa-debug", 
         src_folders=["finqa-0"], subgraph_size=250,
         entities_file="entities.txt", relations_file="relations.txt", vocab_file="vocab.txt"):
     entity2id, relation2id, vocab = {}, {}, {}

@@ -200,7 +200,8 @@ class ReaRev(BaseModel):
         default_prompt = "Please answer the given question in one sentence." 
         all_input = [f"{default_prompt} {quest}" for quest in question_dict["question"]]
         if include_reasoning_paths:
-            all_input, _ = self.input_builder.process_input_batch(question_dict, include_all_paths=True)
+            all_input, _ = self.input_builder.process_input_batch(question_dict, include_all_paths=False)
+            import pdb; pdb.set_trace()
         correct = [0 for inp in all_input]
         scores = [0 for inp in all_input]
         for i, curr_input in enumerate(all_input):
@@ -250,8 +251,9 @@ class ReaRev(BaseModel):
                 correct[i] = int(prediction in question_dict["answer"][i])
         return correct, scores
  
-    def forward(self, batch, question_dict, training=False, replug=True, top_k=5, ppl_bsz=20, gamma=1, 
-                save_ppl_files=[], debug_ppl=False, overwrite_ppl=False, table_name=None, do_eval=True, skip_retrieval=False):
+    def forward(self, batch, question_dict, training=False, replug=True, top_k=10, ppl_bsz=20, gamma=1, 
+                save_ppl_files=[], debug_ppl=False, overwrite_ppl=False, table_name=None, do_eval=True, 
+                skip_retrieval=False):
         """
         Forward function: creates instructions and performs GNN reasoning.
         """
@@ -318,7 +320,9 @@ class ReaRev(BaseModel):
         pred_dist = self.dist_history[-1]
         # Handle degenerate cases
         question_exists = (query_entities.sum(dim=-1, keepdim=True) > 0).float()
-        answer_exists = torch.from_numpy(np.array(question_dict["answer"]) != "").float().to(self.device)
+        answer_exists =  (answer_dist.sum(dim=-1, keepdim=True) > 0).float()
+        if "answer" in question_dict:
+            answer_exists = torch.from_numpy(np.array(question_dict["answer"]) != "").float().to(self.device)
         case_valid = question_exists * answer_exists
         loss = torch.tensor([0.0])
         recall = 0.0

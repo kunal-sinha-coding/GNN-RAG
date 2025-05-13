@@ -44,6 +44,7 @@ class Trainer_KBQA(object):
         self.data_folder = args['data_folder']
         self.ppl_folder = os.path.join("perplexity_scores", self.data_folder, "train")
         self.skip_retrieval = args['skip_retrieval']
+        self.long_answer = args['long_answer']
         if not os.path.isdir(self.ppl_folder):
             os.makedirs(self.ppl_folder, exist_ok=True)
         self.fact_drop = args['fact_drop']
@@ -131,7 +132,8 @@ class Trainer_KBQA(object):
 
     def evaluate(self, data, test_batch_size=1, write_info=False, is_test=True):
         return self.evaluator.evaluate(
-            data, test_batch_size, write_info, is_test, skip_retrieval=self.skip_retrieval
+            data, test_batch_size, write_info, is_test, 
+            skip_retrieval=self.skip_retrieval, long_answer=self.long_answer
         )
 
     def train(self, start_epoch, end_epoch):
@@ -267,7 +269,7 @@ class Trainer_KBQA(object):
             loss, _, _, tp_list, correct, recall, scores = self.model(
                 batch, question_dict, training=True, 
                 save_ppl_files=save_ppl_files, table_name=table_name, 
-                do_eval=False, skip_retrieval=self.skip_retrieval
+                do_eval=True, skip_retrieval=self.skip_retrieval
             )
             # if tp_list is not None:
             h1_list, f1_list = tp_list
