@@ -43,6 +43,8 @@ class ReaRev(BaseModel):
         self.alg = args['alg']
         assert self.alg == 'bfs'
         self.lm = args['lm']
+        self.is_eval = args['is_eval']
+        self.long_answer = args['long_answer']
         self.llm_output_table_cols = ["iteration", "input", "prediction", "unit_test", "score"]
         self.llm_output_table = wandb.Table(columns=self.llm_output_table_cols)
         
@@ -59,14 +61,17 @@ class ReaRev(BaseModel):
         # self.add_module('reform', QueryReform(self.entity_dim))
 
         print("Memory before LLM model: ", torch.cuda.mem_get_info()[0] / 1e9)
+        model_path = 'rmanluo/RoG'
+        if self.long_answer and self.is_eval: #Use non-finetuned Llama if evaluating on long answer
+            model_path = 'meta-llama/Llama-2-7b-chat-hf'
         self.llm_args = argparse.Namespace( #ToDo: dont hardcode
             add_rule=False, cot=False, d='RoG-cwq', data_path='rmanluo', debug=False, dtype='fp16', 
             each_line=False, encrypt=False, explain=False, filter_empty=False, force=False, 
-            max_new_tokens=512, maximun_token=4096, model_name='RoG', model_path='meta-llama/Llama-2-7b-chat-hf', #rmanluo/RoG, #'TinyLlama/TinyLlama-1.1B-Chat-v0.6', 
+            max_new_tokens=512, maximun_token=4096, model_name='RoG', model_path=model_path,#'TinyLlama/TinyLlama-1.1B-Chat-v0.6', 
             n=1, predict_path='llm/results/KGQA-GNN-RAG/rearev-sbert', prompt_path='llm/prompts/llama2_predict.txt', 
             rule_path='llm/results/gen_rule_path/RoG-cwq/RoG/test/predictions_3_False.jsonl', 
             rule_path_g1='llm/results/gnn/RoG-cwq/rearev-sbert/test.info', 
-            rule_path_g2='None', split='test', use_random=False, use_true=False, long_answer=True
+            rule_path_g2='None', split='test', use_random=False, use_true=False
         )
         self.llm_model = Llama(self.llm_args)
         self.input_builder = PromptBuilder(
@@ -80,7 +85,7 @@ class ReaRev(BaseModel):
             each_line=self.llm_args.each_line,
             maximun_token=self.llm_model.maximun_token,
             tokenize=self.llm_model.tokenize,
-            long_answer=self.llm_args.long_answer
+            long_answer=self.long_answer
         )
         print("Memory after LLM model: ", torch.cuda.mem_get_info()[0] / 1e9)
 
