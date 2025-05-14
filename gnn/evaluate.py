@@ -139,9 +139,8 @@ class Evaluator:
                     #     tp_obj[j]['attention'] = attention_tp.tolist()
         return obj_list
 
-    def evaluate(self, valid_data, test_batch_size=1, write_info=False, is_test=True, skip_retrieval=False):
+    def evaluate(self, valid_data, test_batch_size=1, write_info=False, data_split="test", skip_retrieval=False):
         write_info = True
-        data_split = "test" if is_test else "dev"
         self.model.eval()
         self.count = 0
         eps = self.eps

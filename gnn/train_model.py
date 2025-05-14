@@ -54,24 +54,13 @@ class Trainer_KBQA(object):
         self.load_data(args, args['lm'])
         self.entities_names, self.names_entities = llm_utils.get_entities_names()
         self.train_data_start, self.train_data_end = args["train_data_start"], args["train_data_end"]
+        self.model_name = model_name
+        self.load_model("train")
 
         if 'decay_rate' in args:
             self.decay_rate = args['decay_rate']
         else:
             self.decay_rate = 0.98
-
-        if model_name == 'ReaRev':
-            self.model = ReaRev(self.args,  len(self.entity2id), self.num_kb_relation,
-                                  self.num_word)
-        elif model_name == 'NSM':
-            self.model = NSM(self.args,  len(self.entity2id), self.num_kb_relation,
-                                  self.num_word)
-        elif model_name == 'GraftNet':
-            self.model = GraftNet(self.args,  len(self.entity2id), self.num_kb_relation,
-                                  self.num_word)
-        elif model_name == 'NuTrea':
-            self.model = NuTrea(self.args,  len(self.entity2id), self.num_kb_relation,
-                                  self.num_word)
         
         if args['relation_word_emb']:
             #self.model.use_rel_texts(self.rel_texts, self.rel_texts_inv)
@@ -98,6 +87,27 @@ class Trainer_KBQA(object):
                     setattr(self, k, None)
                 else:
                     setattr(self, k, self.data_folder + v)
+
+    def load_model(self, data_split):
+        self.data_split = data_split
+        if self.data_split == "train":
+            self.num_word = self.train_data.num_word
+        elif self.data_split == "valid":
+            self.num_word = self.valid_data_data.num_word
+        elif self.data_split == "test":
+            self.num_word = self.test_data.num_word
+        if self.model_name == 'ReaRev':
+            self.model = ReaRev(self.args,  len(self.entity2id), self.num_kb_relation,
+                                  self.num_word)
+        elif self.model_name == 'NSM':
+            self.model = NSM(self.args,  len(self.entity2id), self.num_kb_relation,
+                                  self.num_word)
+        elif self.model_name == 'GraftNet':
+            self.model = GraftNet(self.args,  len(self.entity2id), self.num_kb_relation,
+                                  self.num_word)
+        elif self.model_name == 'NuTrea':
+            self.model = NuTrea(self.args,  len(self.entity2id), self.num_kb_relation,
+                                  self.num_word)
 
     def optim_def(self):
         
@@ -131,9 +141,10 @@ class Trainer_KBQA(object):
             print("Load ckpt from", ckpt_path)
             self.load_ckpt(ckpt_path)
 
-    def evaluate(self, data, test_batch_size=1, write_info=False, is_test=True):
+    def evaluate(self, data, test_batch_size=1, write_info=False, data_split="train"):
+        self.load_model(data_split) # Reload model to update num_word
         return self.evaluator.evaluate(
-            data, test_batch_size, write_info, is_test, 
+            data, test_batch_size, write_info, self.data_split, 
             skip_retrieval=self.skip_retrieval
         )
 
@@ -167,7 +178,9 @@ class Trainer_KBQA(object):
             self.logger.info("Training h1 : {:.4f}, f1 : {:.4f}".format(np.mean(h1_list_all), np.mean(f1_list_all)))
             
             if (epoch + 1) % eval_every == 0:
-                eval_f1, eval_h1, eval_em, eval_acc = self.evaluate(self.valid_data, self.test_batch_size, is_test=False)
+                eval_f1, eval_h1, eval_em, eval_acc = self.evaluate(
+                    self.valid_data, self.test_batch_size, data_split="valid"
+                )
                 wandb.log({"Val f1": eval_f1})
                 wandb.log({"Val h1": eval_h1})
                 wandb.log({"Val em": eval_em})
@@ -189,7 +202,9 @@ class Trainer_KBQA(object):
                         self.logger.info("BEST EVAL F1: {:.4f}".format(eval_f1))
                         do_test = True
 
-                eval_f1, eval_h1, eval_em, eval_acc = self.evaluate(self.test_data, self.test_batch_size)
+                eval_f1, eval_h1, eval_em, eval_acc = self.evaluate(
+                    self.test_data, self.test_batch_size, data_split="test"
+                )
                 wandb.log({"Test f1": eval_f1})
                 wandb.log({"Test h1": eval_h1})
                 wandb.log({"Test em": eval_em})
@@ -212,6 +227,8 @@ class Trainer_KBQA(object):
                 # if self.reset_time >= 5:
                 #     self.logger.info('No improvement after 5 evaluation. Early Stopping.')
                 #     break
+            if self.data_split != "train":
+                self.load_model("train") #Reload model to train model if necessary
         self.save_ckpt("final")
         self.logger.info('Train Done! Evaluate on testset with saved model')
         print("End Training------------------")
