@@ -134,7 +134,7 @@ class Trainer_KBQA(object):
     def evaluate(self, data, test_batch_size=1, write_info=False, is_test=True):
         return self.evaluator.evaluate(
             data, test_batch_size, write_info, is_test, 
-            skip_retrieval=self.skip_retrieval, long_answer=self.long_answer
+            skip_retrieval=self.skip_retrieval
         )
 
     def train(self, start_epoch, end_epoch):
@@ -250,7 +250,7 @@ class Trainer_KBQA(object):
         losses = []
         actor_losses = []
         ent_losses = []
-        num_epoch = self.train_data.num_data // self.args['batch_size']
+        num_epoch = 1#self.train_data.num_data // self.args['batch_size']
         h1_list_all = []
         f1_list_all = []
         correct_all = []
@@ -270,7 +270,7 @@ class Trainer_KBQA(object):
             loss, _, _, tp_list, correct, recall, scores = self.model(
                 batch, question_dict, training=True, 
                 save_ppl_files=save_ppl_files, table_name=table_name, 
-                do_eval=True, skip_retrieval=self.skip_retrieval
+                do_eval=False, skip_retrieval=self.skip_retrieval
             )
             # if tp_list is not None:
             h1_list, f1_list = tp_list

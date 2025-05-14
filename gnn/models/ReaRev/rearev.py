@@ -200,13 +200,12 @@ class ReaRev(BaseModel):
         cur_loss = torch.sum(tp_loss) / curr_dist.size(0)
         return cur_loss
         
-    def evaluate_llm(self, question_dict, eval_sequence=False, 
+    def evaluate_llm(self, question_dict, long_answer=False, 
             throttle_time=1, table_name=None, include_reasoning_paths=True):
         default_prompt = "Please answer the given question in one sentence." 
         all_input = [f"{default_prompt} {quest}" for quest in question_dict["question"]]
         if include_reasoning_paths:
             all_input, _ = self.input_builder.process_input_batch(question_dict, include_all_paths=False)
-            import pdb; pdb.set_trace()
         correct = [0 for inp in all_input]
         scores = [0 for inp in all_input]
         for i, curr_input in enumerate(all_input):
@@ -256,7 +255,7 @@ class ReaRev(BaseModel):
                 correct[i] = int(prediction in question_dict["answer"][i])
         return correct, scores
  
-    def forward(self, batch, question_dict, training=False, replug=True, top_k=10, ppl_bsz=20, gamma=1, 
+    def forward(self, batch, question_dict, training=False, replug=True, top_k=10, ppl_bsz=100, gamma=1, 
                 save_ppl_files=[], debug_ppl=False, overwrite_ppl=False, table_name=None, do_eval=True, 
                 skip_retrieval=False):
         """
@@ -371,6 +370,7 @@ class ReaRev(BaseModel):
                         ppl_softmax = torch.softmax(ppl_sorted[-top_k:] * gamma, dim=-1)
                         ppl_softmax_safe = torch.where(ppl_softmax.isnan(), 0, ppl_softmax)
                         llm_likelihood[i, ppl_indices_sorted[-top_k:]] = ppl_softmax_safe
+                        import pdb; pdb.set_trace()
                         if debug_ppl:
                             best_ppl_cands = candidates[i, llm_perplexity.argsort(dim=-1)[0, -5:].cpu().numpy()]
                             pred_cands = candidates[i, pred_dist.argsort(dim=-1)[i, -5:].cpu().numpy()]
@@ -391,7 +391,7 @@ class ReaRev(BaseModel):
         scores = [0 for i in range(bsz)]
         if do_eval:
             correct, scores = self.evaluate_llm(
-                question_dict, eval_sequence=True, table_name=table_name,
+                question_dict, long_answer=self.long_answer, table_name=table_name,
             )
         if training:
             h1, f1 = self.get_eval_metric(pred_dist, answer_dist)
