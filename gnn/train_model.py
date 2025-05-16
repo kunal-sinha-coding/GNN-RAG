@@ -55,7 +55,7 @@ class Trainer_KBQA(object):
         self.entities_names, self.names_entities = llm_utils.get_entities_names()
         self.train_data_start, self.train_data_end = args["train_data_start"], args["train_data_end"]
         self.model_name = model_name
-        self.load_model("train")
+        self.load_model()
 
         if 'decay_rate' in args:
             self.decay_rate = args['decay_rate']
@@ -88,14 +88,7 @@ class Trainer_KBQA(object):
                 else:
                     setattr(self, k, self.data_folder + v)
 
-    def load_model(self, data_split):
-        self.data_split = data_split
-        if self.data_split == "train":
-            self.num_word = self.train_data.num_word
-        elif self.data_split == "valid":
-            self.num_word = self.valid_data_data.num_word
-        elif self.data_split == "test":
-            self.num_word = self.test_data.num_word
+    def load_model(self):
         if self.model_name == 'ReaRev':
             self.model = ReaRev(self.args,  len(self.entity2id), self.num_kb_relation,
                                   self.num_word)
@@ -142,9 +135,8 @@ class Trainer_KBQA(object):
             self.load_ckpt(ckpt_path)
 
     def evaluate(self, data, test_batch_size=1, write_info=False, data_split="train"):
-        self.load_model(data_split) # Reload model to update num_word
         return self.evaluator.evaluate(
-            data, test_batch_size, write_info, self.data_split, 
+            data, test_batch_size, write_info, data_split, 
             skip_retrieval=self.skip_retrieval
         )
 
@@ -227,8 +219,8 @@ class Trainer_KBQA(object):
                 # if self.reset_time >= 5:
                 #     self.logger.info('No improvement after 5 evaluation. Early Stopping.')
                 #     break
-            if self.data_split != "train":
-                self.load_model("train") #Reload model to train model if necessary
+            #if self.data_split != "train":
+                #self.load_model("train") #Reload model to train model if necessary
         self.save_ckpt("final")
         self.logger.info('Train Done! Evaluate on testset with saved model')
         print("End Training------------------")
@@ -267,7 +259,7 @@ class Trainer_KBQA(object):
         losses = []
         actor_losses = []
         ent_losses = []
-        num_epoch = 1#self.train_data.num_data // self.args['batch_size']
+        num_epoch = 0#self.train_data.num_data // self.args['batch_size']
         h1_list_all = []
         f1_list_all = []
         correct_all = []

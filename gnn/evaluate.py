@@ -158,6 +158,11 @@ class Evaluator:
         ignore_prob = (1 - eps) / max_local_entity
         for iteration in tqdm(range(num_epoch)):
             start = test_batch_size * iteration
+            if iteration < 683:
+                continue
+            if not valid_data.check_valid(start):
+                print("INVALID")
+                continue
             end = min(test_batch_size * (iteration + 1), valid_data.num_data)
             batch = valid_data.get_batch(start, end, fact_dropout=0.0, test=True)
             question_dict = valid_data.get_question_dict(batch, start, end)

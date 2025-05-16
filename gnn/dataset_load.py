@@ -27,6 +27,7 @@ class BasicDataLoader(object):
         self._parse_args(config, word2id, relation2id, entity2id)
         self._load_file(config, data_type)
         self._load_data()
+        import pdb; pdb.set_trace()
         
 
     def _load_file(self, config, data_type="train"):
@@ -219,6 +220,8 @@ class BasicDataLoader(object):
         for sample in tqdm(self.data):
             self.question_id.append(sample["id"])
             # get a list of local entities
+            if next_id == 683:
+                import pdb; pdb.set_trace()
             g2l = self.global2local_entity_maps[next_id]
             #print(g2l)
             if len(g2l) == 0:
@@ -247,6 +250,8 @@ class BasicDataLoader(object):
                 seed_list.append(local_ent)
                 tp_set.add(local_ent)
             
+            if next_id == 683:
+                import pdb; pdb.set_trace()
             self.seed_list[next_id] = seed_list
             num_query_entity[next_id] = len(tp_set)
             for global_entity, local_entity in g2l.items():
@@ -265,6 +270,8 @@ class BasicDataLoader(object):
             head_list = []
             rel_list = []
             tail_list = []
+            if next_id == 683:
+                import pdb; pdb.set_trace()
             for i, tpl in enumerate(sample['subgraph']['tuples']):
                 sbj, rel, obj = tpl
                 try:
@@ -302,6 +309,7 @@ class BasicDataLoader(object):
             try:
                 assert np.sum(self.seed_distribution[next_id]) > 0.0
             except:
+                import pdb; pdb.set_trace()
                 print(next_id, len(tp_set))
                 exit(-1)
 
@@ -316,6 +324,8 @@ class BasicDataLoader(object):
 
             # construct distribution for answers
             answer_list = []
+            if next_id == 683:
+                import pdb; pdb.set_trace()
             if 'answers_cid' in sample:
                 for answer in sample['answers_cid']:
                     #keyword = 'text' if type(answer['kb_id']) == int else 'kb_id'
@@ -324,13 +334,16 @@ class BasicDataLoader(object):
                     if answer_ent in g2l:
                         self.answer_dists[next_id, g2l[answer_ent]] = 1.0
             else:
-                for answer in sample.get('a_entity', []):
+                answer_key = "a_entity" if "a_entity" in sample else "answers"
+                for answer in sample.get(answer_key, []):
                     keyword = 'text' if type(answer['kb_id']) == int else 'kb_id'
                     answer_ent = self.entity2id[answer[keyword]]
                     answer_list.append(answer_ent)
                     if answer_ent in g2l:
                         self.answer_dists[next_id, g2l[answer_ent]] = 1.0
             self.answer_lists[next_id] = answer_list
+            if next_id == 683:
+                import pdb; pdb.set_trace()
 
             if not self.data_eff:
                 self.kb_adj_mats[next_id] = (np.array(head_list, dtype=int),
@@ -338,6 +351,7 @@ class BasicDataLoader(object):
                                          np.array(tail_list, dtype=int))
 
             next_id += 1
+        import pdb; pdb.set_trace()
         num_no_query_ent = 0
         num_one_query_ent = 0
         num_multiple_ent = 0
@@ -577,9 +591,11 @@ class BasicDataLoader(object):
         next_id = 0
         for sample in tqdm(self.data):
             g2l = dict()
+            if next_id == 683:
+                import pdb; pdb.set_trace()
             if 'entities_cid' in sample:
                 self._add_entity_to_map(self.entity2id, sample['entities_cid'], g2l)
-            elif 'entites' in sample: # We don't have this field for our synthetic data
+            elif 'entities' in sample: # We don't have this field for our synthetic data
                 self._add_entity_to_map(self.entity2id, sample['entities'], g2l)
             #self._add_entity_to_map(self.entity2id, sample['entities'], g2l)
             # construct a map from global entity id to local entity id
@@ -632,7 +648,15 @@ class SingleDataLoader(BasicDataLoader):
     """
     def __init__(self, config, word2id, relation2id, entity2id, tokenize, data_type="train"):
         super(SingleDataLoader, self).__init__(config, word2id, relation2id, entity2id, tokenize, data_type)
+        import pdb; pdb.set_trace()
         
+    def check_valid(self, sample_id):
+        answer_key = "answer" if "answer" in self.data[sample_id] else "answers"
+        return (len(self.data[sample_id]["question"]) > 0
+            and len(self.data[sample_id][answer_key]) > 0
+            and len(self.data[sample_id]["subgraph"]["tuples"]) > 0
+            and len(self.data[sample_id]["subgraph"]["entities"]) > 0)
+
     def get_batch(self, start, end, fact_dropout, q_type=None, test=False):
         sample_ids = self.batches[start: end]
         self.sample_ids = sample_ids
@@ -643,8 +667,13 @@ class SingleDataLoader(BasicDataLoader):
         true_batch_id = None
         seed_dist = self.seed_distribution[sample_ids]
         q_input = self.deal_q_type(q_type)
-        kb_adj_mats = self._build_fact_mat(sample_ids, fact_dropout=fact_dropout)
-        
+        try:
+            if sample_ids[0] == 684:
+                import pdb; pdb.set_trace()
+            kb_adj_mats = self._build_fact_mat(sample_ids, fact_dropout=fact_dropout)
+        except:
+            import pdb; pdb.set_trace()
+
         if test:
             return self.candidate_entities[sample_ids], \
                    self.query_entities[sample_ids], \
@@ -728,6 +757,7 @@ def load_data(config, tokenize):
         "rel_texts_inv": relation_texts_inv,
         "ent_texts": entities_texts
     }
+    import pdb; pdb.set_trace()
     return dataset
 
 if __name__ == "__main__":

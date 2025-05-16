@@ -199,6 +199,24 @@ class ReaRev(BaseModel):
         tp_loss = tp_loss * label_valid
         cur_loss = torch.sum(tp_loss) / curr_dist.size(0)
         return cur_loss
+
+    def get_groundtruth(self, question_dict):
+        groundtruth = []
+        for i in range(len(question_dict["question"])):
+            gt = [""]
+            answer_key = "answer" if "answer" in question_dict else "answers"                                                  
+            try:                                                                                                               
+                gt = question_dict[answer_key][i]
+                if len(gt) > 0 and isinstance(gt[0], dict):
+                    answers = []
+                    for current in gt:
+                        answers.append(current["text"] if current["text"] else current["kb_id"])
+                    gt = answers
+                gt = [current.strip().lower() for current in gt]
+            except:                                                                                                            
+                print("Failed on: ", question_dict[answer_key])                                                                
+            groundtruth.append(gt)
+        return groundtruth
         
     def evaluate_llm(self, question_dict, long_answer=False, 
             throttle_time=1, table_name=None, include_reasoning_paths=True):
@@ -208,16 +226,18 @@ class ReaRev(BaseModel):
             all_input, _ = self.input_builder.process_input_batch(question_dict, include_all_paths=False)
         correct = [0 for inp in all_input]
         scores = [0 for inp in all_input]
+        groundtruth = self.get_groundtruth(question_dict)
         for i, curr_input in enumerate(all_input):
             start_time = time.time()
             try:
-                prediction = self.llm_model.generate_sentence(curr_input).strip()
+                prediction = self.llm_model.generate_sentence(curr_input).strip().lower()
             except:
                 print("Failed on generate sentence")
                 print(f"Curr input: {curr_input}")
-            groundtruth = question_dict["answer"][i][0]
-            unit_test = f"Is the response correct? Groundtruth: {groundtruth}"
-            if eval_sequence:
+            answer_key = "answer" if "answer" in question_dict else "answers"
+            groundtruth = self.get_groundtruth(question_dict)
+            if long_answer:
+                unit_test = f"Is the response correct? Groundtruth: {groundtruth[i]}"
                 url = "https://api.contextual.ai/v1/lmunit"
                 lm_unit_api_key = os.getenv("LM_UNIT_API_KEY")
                 headers = {
@@ -252,11 +272,11 @@ class ReaRev(BaseModel):
                 #if table_name:
                     #wandb.log({table_name: self.llm_output_table})
             else:
-                correct[i] = int(prediction in question_dict["answer"][i])
+                correct[i] = int(prediction in groundtruth[i])
         return correct, scores
  
-    def forward(self, batch, question_dict, training=False, replug=True, top_k=10, ppl_bsz=100, gamma=1, 
-                save_ppl_files=[], debug_ppl=False, overwrite_ppl=False, table_name=None, do_eval=True, 
+    def forward(self, batch, question_dict, training=False, replug=False, top_k=10, ppl_bsz=100, gamma=1, 
+                save_ppl_files=[], debug_ppl=False, overwrite_ppl=True, table_name=None, do_eval=True, 
                 skip_retrieval=False):
         """
         Forward function: creates instructions and performs GNN reasoning.
@@ -328,6 +348,7 @@ class ReaRev(BaseModel):
         if "answer" in question_dict:
             answer_exists = torch.from_numpy(np.array(question_dict["answer"]) != "").float().to(self.device)
         case_valid = question_exists * answer_exists
+        groundtruth = self.get_groundtruth(question_dict)
         loss = torch.tensor([0.0])
         recall = 0.0
         sorted_indices = pred_dist.sort(dim=-1).indices
@@ -353,7 +374,7 @@ class ReaRev(BaseModel):
                             all_input_list = [inp for i, inp in enumerate(all_input_list) if case_valid[i].item()]
                             curr_perplexity = torch.zeros(question_dict["cand"].shape).to(self.device)
                             if len(all_input_list) > 0:
-                                curr_perplexity_valid = self.llm_model.calculate_perplexity(all_input_list, question_dict["answer"])
+                                curr_perplexity_valid = self.llm_model.calculate_perplexity(all_input_list, groundtruth)
                                 valid_examples = case_valid[:, 0].nonzero(as_tuple=True)[0]
                                 curr_perplexity[valid_examples] = curr_perplexity_valid
                                 input_master_list.extend(all_input_list[0])
@@ -370,7 +391,6 @@ class ReaRev(BaseModel):
                         ppl_softmax = torch.softmax(ppl_sorted[-top_k:] * gamma, dim=-1)
                         ppl_softmax_safe = torch.where(ppl_softmax.isnan(), 0, ppl_softmax)
                         llm_likelihood[i, ppl_indices_sorted[-top_k:]] = ppl_softmax_safe
-                        import pdb; pdb.set_trace()
                         if debug_ppl:
                             best_ppl_cands = candidates[i, llm_perplexity.argsort(dim=-1)[0, -5:].cpu().numpy()]
                             pred_cands = candidates[i, pred_dist.argsort(dim=-1)[i, -5:].cpu().numpy()]

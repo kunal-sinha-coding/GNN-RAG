@@ -95,7 +95,7 @@ def create_parser_rearev(parser):
     parser.add_argument('--use_self_loop', default=True, type=bool_flag)
     parser.add_argument('--normalized_gnn', default=False, type=bool_flag)
     parser.add_argument('--norm_rel', action='store_true')
-    parser.add_argument('--data_eff', action='store_true')
+    parser.add_argument('--data_eff', action='store_true', default=True)
     parser.add_argument('--pos_emb', action='store_true')
     parser.add_argument('--skip_retrieval', default=False, action='store_true')
     parser.add_argument('--long_answer', default=False, action='store_true')
