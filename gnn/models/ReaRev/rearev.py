@@ -275,8 +275,8 @@ class ReaRev(BaseModel):
                 correct[i] = int(prediction in groundtruth[i])
         return correct, scores
  
-    def forward(self, batch, question_dict, training=False, replug=False, top_k=10, ppl_bsz=100, gamma=1, 
-                save_ppl_files=[], debug_ppl=False, overwrite_ppl=True, table_name=None, do_eval=True, 
+    def forward(self, batch, question_dict, training=False, replug=True, top_k=2000, ppl_bsz=100, gamma=1e5, 
+                save_ppl_files=[], debug_ppl=True, overwrite_ppl=True, table_name=None, do_eval=True, 
                 skip_retrieval=False):
         """
         Forward function: creates instructions and performs GNN reasoning.
@@ -384,6 +384,7 @@ class ReaRev(BaseModel):
                         for i in range(bsz):
                             torch.save(llm_perplexity[i:i+1, :], save_ppl_files[i])
                     llm_likelihood = torch.zeros((bsz, num_cands)).to(self.device)
+                    import pdb; pdb.set_trace()
                     for i in range(bsz):
                         llm_perplexity = torch.load(save_ppl_files[i]).to(self.device)
                         num_scores = llm_perplexity.size(-1)
@@ -394,7 +395,7 @@ class ReaRev(BaseModel):
                         if debug_ppl:
                             best_ppl_cands = candidates[i, llm_perplexity.argsort(dim=-1)[0, -5:].cpu().numpy()]
                             pred_cands = candidates[i, pred_dist.argsort(dim=-1)[i, -5:].cpu().numpy()]
-                            print(question_dict["answer"][i])
+                            print(question_dict["answers"][i])
                             print(llm_perplexity[0].sort())
                             print(best_ppl_cands)
                             print(pred_dist[i].sort())

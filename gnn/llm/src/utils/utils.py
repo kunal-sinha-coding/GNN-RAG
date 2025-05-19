@@ -37,15 +37,17 @@ def rule_to_string(rule: list, sep_token = "<SEP>", bop = "<PATH>", eop = "</PAT
         rule_string = sep_token.join(rule)
     return bop + rule_string + eop
 
-def path_to_string(path: list) -> str:
+def path_to_string(paths: list) -> str:
     result = ""
-    for i, p in enumerate(path):
-        if i == 0:
-            h, r, t = p
-            result += f"{h} -> {r} -> {t}"
-        else:
-            _, r, t = p
-            result += f" -> {r} -> {t}"
+    for my_path in paths:
+        for i, p in enumerate(my_path):
+            if i == 0:
+                h, r, t = p
+                result += f"{h} -> {r} -> {t}"
+            else:
+                _, r, t = p
+                result += f" -> {r} -> {t}"
+        result += "\n"
     #if len(path) > 0 and len(path[0]) > 0:
         #result = path[-1][-1] #TEMPORARILY ignore path, just do final tail entity
     return result.strip()

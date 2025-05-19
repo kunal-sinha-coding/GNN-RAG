@@ -259,7 +259,7 @@ class Trainer_KBQA(object):
         losses = []
         actor_losses = []
         ent_losses = []
-        num_epoch = 0#self.train_data.num_data // self.args['batch_size']
+        num_epoch = self.train_data.num_data // self.args['batch_size']
         h1_list_all = []
         f1_list_all = []
         correct_all = []

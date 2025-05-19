@@ -73,7 +73,7 @@ def get_truth_paths(q_entity: list, a_entity: list, graph: nx.Graph, include_all
     # Select paths
     paths = []
     for t in a_entity:
-        paths += get_shortest_path(q_entity, t, graph, include_all_paths)
+        paths.append(get_shortest_path(q_entity, t, graph, include_all_paths))
     #for h in q_entity:
         #if h not in graph:
             #continue
@@ -89,16 +89,19 @@ def get_truth_paths(q_entity: list, a_entity: list, graph: nx.Graph, include_all
                 #pass
     # Add relation to paths
     result_paths = []
-    for p_idx, p in enumerate(paths):
-        tmp = []
-        for i in range(len(p)-1):
-            u = p[i]
-            v = p[i+1]
-            relation = "related" #Default dummy relation for dummy path
-            if u in graph and v in graph[u] and 'relation' in graph[u][v]:
-                relation = graph[u][v]['relation']
-            tmp.append((u, relation, v))
-        result_paths.append(tmp)
+    for my_path in paths:
+        my_result = []
+        for p in my_path: 
+            tmp = []
+            for i in range(len(p)-1):
+                u = p[i]
+                v = p[i+1]
+                relation = "related" #Default dummy relation for dummy path
+                if u in graph and v in graph[u] and 'relation' in graph[u][v]:
+                    relation = graph[u][v]['relation']
+                tmp.append((u, relation, v))
+            my_result.append(temp)
+        result_paths.append(my_result)
     return result_paths
     
 def get_simple_paths(q_entity: list, a_entity: list, graph: nx.Graph, hop=2) -> list:

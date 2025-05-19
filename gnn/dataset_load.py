@@ -116,7 +116,6 @@ class BasicDataLoader(object):
         self.entity2id = entity2id
         self.id2entity = {i: entity for entity, i in entity2id.items()}
         self.entities_names, self.names_entities = llm_utils.get_entities_names()
-        import pdb; pdb.set_trace()
         self.q_type = config['q_type']
 
         if self.use_inverse_relation:
@@ -562,7 +561,11 @@ class BasicDataLoader(object):
                 if k == "subgraph":
                     text_tuples = []
                     for h, r, t in v["tuples"]:
-                        text_tuples.append([self.id_to_entity_name(ent_id) for ent_id in [h, r, t]])
+                        text_tuples.append([
+                            self.id_to_entity_name(h),
+                            self.id2relation[r],
+                            self.id_to_entity_name(t)
+                        ])
                     question_dict["graph"].append(text_tuples)
                 elif k == "entities":
                     question_dict["q_entity"].append([self.id_to_entity_name(ent_id) for ent_id in v])
