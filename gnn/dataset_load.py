@@ -537,17 +537,20 @@ class BasicDataLoader(object):
         else:
             self.batches = np.random.permutation(self.num_data)
 
+    def id_to_entity_name(self, ent_id):
+        name = ""
+        if ent_id in self.id2entity:
+            ent = self.id2entity[ent_id]
+            name = self.entities_names[ent] if ent in self.entities_names else ent
+        return name
+
     def get_candidates(self, batch):
         cand_ids = batch[0]
         candidates = []
         for i, c_ids in enumerate(cand_ids):
             current_cands = []
             for c in c_ids:
-                current = ''
-                if c in self.id2entity:
-                    ent = self.id2entity[c]
-                    current = self.entities_names[ent] if ent in self.entities_names else ent
-                current_cands.append(current)
+                current_cands.append(self.id_to_entity_name(c))
             candidates.append(current_cands)
         return np.array(candidates)
 
@@ -559,11 +562,10 @@ class BasicDataLoader(object):
                 if k == "subgraph":
                     text_tuples = []
                     for h, r, t in v["tuples"]:
-                        text_tuples.append([self.id2entity[h], self.id2relation[r], self.id2entity[t]])
+                        text_tuples.append([self.id_to_entity_name(ent_id) for ent_id in [h, r, t]])
                     question_dict["graph"].append(text_tuples)
-                    question_dict["cand"].append([self.id2entity[ent_id] for ent_id in v["entities"]])
                 elif k == "entities":
-                    question_dict["q_entity"].append([self.id2entity[ent_id] for ent_id in v])
+                    question_dict["q_entity"].append([self.id_to_entity_name(ent_id) for ent_id in v])
                 elif k == "answer":
                     question_dict["answer"].append([v])
                 else:
