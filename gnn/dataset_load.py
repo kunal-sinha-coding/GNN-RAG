@@ -116,6 +116,7 @@ class BasicDataLoader(object):
         self.entity2id = entity2id
         self.id2entity = {i: entity for entity, i in entity2id.items()}
         self.entities_names, self.names_entities = llm_utils.get_entities_names()
+        import pdb; pdb.set_trace()
         self.q_type = config['q_type']
 
         if self.use_inverse_relation:
