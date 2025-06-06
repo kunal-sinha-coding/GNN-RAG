@@ -27,6 +27,8 @@ class PromptBuilder(object):
     MCQ_INSTRUCTION = """Please answer the following questions. Please select the answers from the given choices and return the answer only."""
     SAQ_INSTRUCTION = """Please answer the following questions. Please keep the answer as simple as possible and return all the possible answer as a list."""
     MCQ_RULE_INSTRUCTION = """Based on the reasoning paths, please answer the given question. Please select the answers from the given choices and return the answers only."""
+    #SAQ_RULE_INSTRUCTION = """Based on the reasoning paths, please write 10 answers for the given question. Each answer should be a short word or phrase. Please return each answer on a separate line."""
+    BASELINE_SAQ_RULE_INSTRUCTION = """Please answer the given question. Please keep the answer as simple as possible and return all the possible answers as a list."""
     SAQ_RULE_INSTRUCTION = """Based on the reasoning paths, please answer the given question. Please keep the answer as simple as possible and return all the possible answers as a list."""
     LONG_RULE_INSTRUCTION = """Based on the reasoning paths, please answer the given question in one sentence."""
     #SAQ_RULE_INSTRUCTION = """Based on the provided knowledge, please answer the given question. Please keep the answer as simple as possible and return all the possible answers as a list."""
@@ -82,19 +84,22 @@ class PromptBuilder(object):
         return prediction
 
     # Wrapper function that calls process_input for all elements in the batch
-    def process_input_batch(self, question_dicts, include_all_paths=False, return_list=True):
+    def process_input_batch(self, question_dicts, max_num_paths=1, include_reasoning_paths=True, return_list=True):
         bsz = len(question_dicts["question"])
         all_input, all_input_list = [], []
         for i in range(bsz):
             current_dict = {}
             for k, v in question_dicts.items():
                 current_dict[k] = v[i]
-            input, input_list = self.process_input(current_dict, include_all_paths, return_list)
+            input, input_list = self.process_input(
+                current_dict, max_num_paths, 
+                include_reasoning_paths, return_list
+            )
             all_input.append(input)
             all_input_list.append(input_list)
         return all_input, all_input_list
     
-    def process_input(self, question_dict, include_all_paths, return_list=True):
+    def process_input(self, question_dict, max_num_paths, include_reasoning_paths, return_list=True):
         '''
         Take question as input and return the input with prompt
         '''
@@ -127,7 +132,9 @@ class PromptBuilder(object):
                 skip_ents = []
                 graph = graph_utils.build_graph(question_dict['graph'], skip_ents, self.encrypt)
             lists_of_paths2 = []
-            reasoning_paths = graph_utils.get_truth_paths(question_dict['q_entity'], question_dict['cand'], graph, include_all_paths)
+            reasoning_paths = []
+            if include_reasoning_paths:
+                reasoning_paths = graph_utils.get_truth_paths(question_dict['q_entity'], question_dict['cand'], graph, max_num_paths)
             for p in reasoning_paths:
                 #if llm_utils.path_to_string(p) not in lists_of_paths: 
                 # Default to candidate only if empty reasoning path
@@ -151,7 +158,10 @@ class PromptBuilder(object):
             if self.long_answer:
                 instruction = self.LONG_RULE_INSTRUCTION
             elif self.add_rule or question_dict['cand'] is not None:
-                instruction = self.SAQ_RULE_INSTRUCTION
+                if include_reasoning_paths:
+                    instruction = self.SAQ_RULE_INSTRUCTION
+                else:
+                    instruction = self.BASELINE_SAQ_RULE_INSTRUCTION
             else:
                 instruction = self.SAQ_INSTRUCTION
         

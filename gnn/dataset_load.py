@@ -571,6 +571,11 @@ class BasicDataLoader(object):
                     question_dict["q_entity"].append([self.id_to_entity_name(ent_id) for ent_id in v])
                 elif k == "answer":
                     question_dict["answer"].append([v])
+                elif k == "answers":
+                    question_dict["answers"].append([
+                        ans['text'] if ans['text'] is not None else ans["kb_id"]
+                        for ans in v
+		    ])
                 else:
                     question_dict[k].append(v)
         question_dict["cand"] = self.get_candidates(batch) 

@@ -169,30 +169,30 @@ class Trainer_KBQA(object):
             self.logger.info("Epoch: {}, loss : {:.4f}, time: {}".format(epoch + 1, loss, time.time() - st))
             self.logger.info("Training h1 : {:.4f}, f1 : {:.4f}".format(np.mean(h1_list_all), np.mean(f1_list_all)))
             
-            if (epoch + 1) % eval_every == 0:
-                eval_f1, eval_h1, eval_em, eval_acc = self.evaluate(
-                    self.valid_data, self.test_batch_size, data_split="valid"
-                )
-                wandb.log({"Val f1": eval_f1})
-                wandb.log({"Val h1": eval_h1})
-                wandb.log({"Val em": eval_em})
-                wandb.log({"Val acc": eval_acc})
-                self.logger.info("EVAL F1: {:.4f}, H1: {:.4f}, EM {:.4f}".format(eval_f1, eval_h1, eval_em))
+            if (epoch + 1) % eval_every == 0: # SKIP VAL EVALAUTION FOR NOW
+                #eval_f1, eval_h1, eval_em, eval_acc = self.evaluate(
+                #    self.valid_data, self.test_batch_size, data_split="valid"
+                #)
+                #wandb.log({"Val f1": eval_f1})
+                #wandb.log({"Val h1": eval_h1})
+                #wandb.log({"Val em": eval_em})
+                #wandb.log({"Val acc": eval_acc})
+                #self.logger.info("EVAL F1: {:.4f}, H1: {:.4f}, EM {:.4f}".format(eval_f1, eval_h1, eval_em))
                 # eval_f1, eval_h1 = self.evaluate(self.test_data, self.test_batch_size)
                 # self.logger.info("TEST F1: {:.4f}, H1: {:.4f}".format(eval_f1, eval_h1))
                 do_test = False
 
-                if epoch > self.warmup_epoch:
-                    if eval_h1 > self.best_h1:
-                        self.best_h1 = eval_h1
-                        self.save_ckpt("h1")
-                        self.logger.info("BEST EVAL H1: {:.4f}".format(eval_h1))
-                        do_test = True
-                    if eval_f1 > self.best_f1:
-                        self.best_f1 = eval_f1
-                        self.save_ckpt("f1")
-                        self.logger.info("BEST EVAL F1: {:.4f}".format(eval_f1))
-                        do_test = True
+                #if epoch > self.warmup_epoch:
+                #    if eval_h1 > self.best_h1:
+                #        self.best_h1 = eval_h1
+                #        self.save_ckpt("h1")
+                #        self.logger.info("BEST EVAL H1: {:.4f}".format(eval_h1))
+                #        do_test = True
+                #    if eval_f1 > self.best_f1:
+                #        self.best_f1 = eval_f1
+                #        self.save_ckpt("f1")
+                #        self.logger.info("BEST EVAL F1: {:.4f}".format(eval_f1))
+                #        do_test = True
 
                 eval_f1, eval_h1, eval_em, eval_acc = self.evaluate(
                     self.test_data, self.test_batch_size, data_split="test"

@@ -5,6 +5,7 @@ import torch.nn.functional as F
 import torch.nn as nn
 import math
 import os
+import re
 from dotenv import load_dotenv
 
 from models.base_model import BaseModel
@@ -61,9 +62,9 @@ class ReaRev(BaseModel):
         # self.add_module('reform', QueryReform(self.entity_dim))
 
         print("Memory before LLM model: ", torch.cuda.mem_get_info()[0] / 1e9)
-        model_path = 'rmanluo/RoG'
-        if self.long_answer and self.is_eval: #Use non-finetuned Llama if evaluating on long answer
-            model_path = 'meta-llama/Llama-2-7b-chat-hf'
+        #model_path = 'rmanluo/RoG'
+        #if self.long_answer and self.is_eval: #Use non-finetuned Llama if evaluating on long answer
+        model_path = 'rmanluo/RoG'#'meta-llama/Llama-2-7b-chat-hf'
         self.llm_args = argparse.Namespace( #ToDo: dont hardcode
             add_rule=False, cot=False, d='RoG-cwq', data_path='rmanluo', debug=False, dtype='fp16', 
             each_line=False, encrypt=False, explain=False, filter_empty=False, force=False, 
@@ -207,33 +208,42 @@ class ReaRev(BaseModel):
             answer_key = "answer" if "answer" in question_dict else "answers"                                                  
             try:                                                                                                               
                 gt = question_dict[answer_key][i]
-                if len(gt) > 0 and isinstance(gt[0], dict):
-                    answers = []
-                    for current in gt:
-                        answers.append(current["text"] if current["text"] else current["kb_id"])
-                    gt = answers
-                gt = [current.strip().lower() for current in gt]
+                #if len(gt) > 0 and isinstance(gt[0], dict):
+                #    answers = []
+                #    for current in gt:
+                #        answers.append(current["text"] if current["text"] else current["kb_id"])
+                #    gt = answers
+                gt = [current.strip() for current in gt]
             except:                                                                                                            
                 print("Failed on: ", question_dict[answer_key])                                                                
             groundtruth.append(gt)
         return groundtruth
+
+    def format_prediction(self, prediction):
+        if "1." in prediction:
+            prediction = prediction[prediction.index("1."):]
+        pred_formatted = re.sub(r'\d+\.', '', prediction).strip().lower().split("\n")
+        return [pred.strip() for pred in pred_formatted if pred not in ["", "?"]]
         
     def evaluate_llm(self, question_dict, long_answer=False, 
-            throttle_time=1, table_name=None, include_reasoning_paths=True):
-        default_prompt = "Please answer the given question in one sentence." 
-        all_input = [f"{default_prompt} {quest}" for quest in question_dict["question"]]
-        if include_reasoning_paths:
-            all_input, _ = self.input_builder.process_input_batch(question_dict, include_all_paths=False)
+            throttle_time=1, table_name=None, max_num_paths=2000, include_reasoning_paths=True):
+        # To run long context, set max_num_paths=2000 and include_reasoning_paths=True
+        # To run llm-only, set inlcude_reasoning_paths=False
+        all_input, _ = self.input_builder.process_input_batch(
+            question_dict, max_num_paths=max_num_paths,
+            include_reasoning_paths=include_reasoning_paths
+        )
         correct = [0 for inp in all_input]
         scores = [0 for inp in all_input]
         groundtruth = self.get_groundtruth(question_dict)
         for i, curr_input in enumerate(all_input):
             start_time = time.time()
             try:
-                prediction = self.llm_model.generate_sentence(curr_input).strip().lower()
+                prediction = self.llm_model.generate_sentence(curr_input).strip()
             except:
                 print("Failed on generate sentence")
                 print(f"Curr input: {curr_input}")
+                continue
             answer_key = "answer" if "answer" in question_dict else "answers"
             groundtruth = self.get_groundtruth(question_dict)
             if long_answer:
@@ -272,11 +282,19 @@ class ReaRev(BaseModel):
                 #if table_name:
                     #wandb.log({table_name: self.llm_output_table})
             else:
-                correct[i] = int(prediction in groundtruth[i])
+                # Treat "scores" as h1
+                pred_formatted = self.format_prediction(prediction)
+                for j, pred in enumerate(pred_formatted):
+                    for gt in groundtruth[i]:
+                        gt_formatted = gt.strip().lower()
+                        if gt_formatted == pred:#pred in gt_formatted or gt_formatted in pred:
+                            correct[i] = 1
+                            if j == 0:
+                                scores[i] = 1
         return correct, scores
  
-    def forward(self, batch, question_dict, training=False, replug=True, top_k=2000, ppl_bsz=100, gamma=1e5, 
-                save_ppl_files=[], debug_ppl=True, overwrite_ppl=True, table_name=None, do_eval=True, 
+    def forward(self, batch, question_dict, training=False, replug=True, top_k=10, ppl_bsz=20, gamma=1e5, 
+                save_ppl_files=[], debug_ppl=False, overwrite_ppl=False, table_name=None, do_eval=True, 
                 skip_retrieval=False):
         """
         Forward function: creates instructions and performs GNN reasoning.
@@ -344,9 +362,10 @@ class ReaRev(BaseModel):
         pred_dist = self.dist_history[-1]
         # Handle degenerate cases
         question_exists = (query_entities.sum(dim=-1, keepdim=True) > 0).float()
-        answer_exists =  (answer_dist.sum(dim=-1, keepdim=True) > 0).float()
-        if "answer" in question_dict:
-            answer_exists = torch.from_numpy(np.array(question_dict["answer"]) != "").float().to(self.device)
+        #answer_exists =  (answer_dist.sum(dim=-1, keepdim=True) > 0).float()
+        answer_key = "answers" if "answers" in question_dict else "answer"
+        answer_list_nonempty = [len(ans) > 0 for ans in question_dict[answer_key]]
+        answer_exists = torch.tensor(answer_list_nonempty).float()[:, None].to(self.device)
         case_valid = question_exists * answer_exists
         groundtruth = self.get_groundtruth(question_dict)
         loss = torch.tensor([0.0])
@@ -367,6 +386,7 @@ class ReaRev(BaseModel):
                         perplexities = []
                         idx = 0
                         #Stop once all entries in batch have no candidates left
+                        import pdb; pdb.set_trace()
                         while idx < num_cands: # and any([cand[idx] != "" for cand in candidates]):
                             question_dict["cand"] = candidates[:, idx : min((idx + ppl_bsz, num_cands))]
                             all_input, all_input_list = self.input_builder.process_input_batch(question_dict)
@@ -384,22 +404,36 @@ class ReaRev(BaseModel):
                         for i in range(bsz):
                             torch.save(llm_perplexity[i:i+1, :], save_ppl_files[i])
                     llm_likelihood = torch.zeros((bsz, num_cands)).to(self.device)
-                    import pdb; pdb.set_trace()
                     for i in range(bsz):
-                        llm_perplexity = torch.load(save_ppl_files[i]).to(self.device)
+                        try:
+                            llm_perplexity = torch.load(save_ppl_files[i]).to(self.device)
+                        except:
+                            import pdb; pdb.set_trace()
                         num_scores = llm_perplexity.size(-1)
-                        ppl_sorted, ppl_indices_sorted = llm_perplexity[0].sort()
-                        ppl_softmax = torch.softmax(ppl_sorted[-top_k:] * gamma, dim=-1)
+                        #ppl_sorted, ppl_indices_sorted = llm_perplexity[0].sort()
+                        ppl_softmax = torch.softmax(llm_perplexity * gamma, dim=-1)#torch.softmax(ppl_sorted[-top_k:] * gamma, dim=-1)
                         ppl_softmax_safe = torch.where(ppl_softmax.isnan(), 0, ppl_softmax)
-                        llm_likelihood[i, ppl_indices_sorted[-top_k:]] = ppl_softmax_safe
+                        llm_likelihood[i, :ppl_softmax.size(-1)] = ppl_softmax_safe[0]
+                        #llm_likelihood[i, ppl_indices_sorted[-top_k:]] = ppl_softmax_safe
                         if debug_ppl:
-                            best_ppl_cands = candidates[i, llm_perplexity.argsort(dim=-1)[0, -5:].cpu().numpy()]
-                            pred_cands = candidates[i, pred_dist.argsort(dim=-1)[i, -5:].cpu().numpy()]
-                            print(question_dict["answers"][i])
-                            print(llm_perplexity[0].sort())
-                            print(best_ppl_cands)
-                            print(pred_dist[i].sort())
-                            print(pred_cands)
+                            #pref = num_scores - 1 - (llm_perplexity[0].argsort() == correct_idx[i].item()).float().argmax()
+                            top = llm_perplexity[0].argmax().item()
+                            if answer_dist[i, top].item() < 1:
+                                if input_master_list:
+                                    print("Best input: ", input_master_list[top])
+                                print("Groundtruth: ", groundtruth[i])
+                            #if pref.item() > top_k:
+                                #print("Correct: ", correct_idx)
+                                #print("Place: ", pref)
+                                #print(llm_perplexity.sort())
+                                #import pdb; pdb.set_trace()
+                            #best_ppl_cands = candidates[i, llm_perplexity.argsort(dim=-1)[0, -5:].cpu().numpy()]
+                            #pred_cands = candidates[i, pred_dist.argsort(dim=-1)[i, -5:].cpu().numpy()]
+                            #print(question_dict["answers"][i])
+                            #print(llm_perplexity[0].sort())
+                            #print(best_ppl_cands)
+                            #print(pred_dist[i].sort())
+                            #print(pred_cands)
                 loss = self.calc_loss_label(curr_dist=pred_dist, teacher_dist=llm_likelihood, label_valid=case_valid)
             else:
                 loss = self.calc_loss_label(curr_dist=pred_dist, teacher_dist=answer_dist, label_valid=case_valid)

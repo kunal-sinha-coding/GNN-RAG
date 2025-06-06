@@ -45,35 +45,36 @@ def bfs_with_rule(graph, start_node, target_rule, max_p = 10):
     
     return result_paths
 
-def get_shortest_path(q_entity: list, t: str, graph: nx.Graph, include_all_paths: bool) -> list:
+def get_shortest_path(q_entity: list, t: str, graph: nx.Graph, max_num_paths: int) -> list:
     paths = []
     for h in q_entity:
-        if include_all_paths:
-            try:
-                for p in nx.all_shortest_paths(graph, h, t):
-                    paths.append(p)
-            except:
-                continue
-        else:
-            try:
-                path = nx.shortest_path(graph, h, t)
-                return [path]
-            except:
-                continue
+        try:
+            for p in nx.all_shortest_paths(graph, h, t):
+                paths.append(p)
+                if len(paths) >= max_num_paths:
+                    return paths
+        except:
+            continue
+        #else:
+        #    try:
+        #        path = nx.shortest_path(graph, h, t)
+        #        return [path]
+        #    except:
+        #        continue
     #If no path found, return a dummy path
     if len(paths) == 0:
         h = q_entity[0] if len(q_entity) > 0 else t
         paths = [[h, t]]
     return paths
 
-def get_truth_paths(q_entity: list, a_entity: list, graph: nx.Graph, include_all_paths: bool) -> list:
+def get_truth_paths(q_entity: list, a_entity: list, graph: nx.Graph, max_num_paths: int) -> list:
     '''
     Get shortest paths connecting question and answer entities.
     '''
     # Select paths
     paths = []
     for t in a_entity:
-        paths.append(get_shortest_path(q_entity, t, graph, include_all_paths))
+        paths.append(get_shortest_path(q_entity, t, graph, max_num_paths))
     #for h in q_entity:
         #if h not in graph:
             #continue
@@ -100,7 +101,7 @@ def get_truth_paths(q_entity: list, a_entity: list, graph: nx.Graph, include_all
                 if u in graph and v in graph[u] and 'relation' in graph[u][v]:
                     relation = graph[u][v]['relation']
                 tmp.append((u, relation, v))
-            my_result.append(temp)
+            my_result.append(tmp)
         result_paths.append(my_result)
     return result_paths
     
